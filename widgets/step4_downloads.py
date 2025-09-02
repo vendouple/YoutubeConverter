@@ -378,8 +378,8 @@ class Step4DownloadsWidget(QWidget):
             if not w.progress.isVisible():
                 w.progress.show()
             w.status.setText(text)
-            # Busy indicator for processing phase
-            if text.startswith("Processing"):
+            # Busy indicator for processing/removal phase
+            if text.startswith("Processing") or text.startswith("Removing"):
                 w.progress.setRange(0, 0)
             elif (
                 text.startswith("Error")

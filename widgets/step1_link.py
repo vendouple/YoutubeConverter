@@ -70,7 +70,6 @@ class Step1LinkWidget(QWidget):
         self.fetcher = None
         self.selected: List[Dict] = []
         self._bg_fetchers = {}
-        # Request management
         self._active_req_id = 0
         self._thumb_threads: List[Step1LinkWidget._ThumbWorker] = []
         self._thumb_max = 3
@@ -1201,18 +1200,3 @@ class Step1LinkWidget(QWidget):
         finally:
             self.playlist_list.setUpdatesEnabled(True)
             self._thumb_threads.clear()
-
-    # "Next" in multi-select mode: emit all selected infos
-    def _confirm_selection(self):
-        if not self.selected:
-            QMessageBox.information(self, "No videos", "No videos selected.")
-            return
-        self._fetch_all_selected_then_emit()
-
-    def set_next_enabled(self, enabled: bool, note: str = ""):
-        try:
-            self.btn_next.setEnabled(enabled)
-            if note is not None:
-                self.lbl_status.setText(note)
-        except Exception:
-            pass

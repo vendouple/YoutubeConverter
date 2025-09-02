@@ -7,6 +7,18 @@ import subprocess
 import requests
 import json
 from core.update import YTDLP_EXE
+from datetime import datetime  # NEW
+from urllib.parse import urlparse, parse_qs  # NEW
+import tempfile  # NEW
+
+# ADD: import SponsorBlock helpers
+from core.sponsorblock import (
+    normalize_sb_categories,
+    apply_sponsorblock_to_file,
+    sb_log,
+    extract_video_id,  # NEW
+    fetch_segments,  # NEW
+)
 
 # Centralized HTTP headers with client identifier
 HTTP_HEADERS = {
@@ -17,6 +29,19 @@ HTTP_HEADERS = {
 EXTRACTOR_ARGS = {
     "youtube": {"player_client": ["tv"], "skip": ["dash", "hls"]},
     "youtubetab": {"skip": ["webpage"]},
+}
+
+_VALID_SB_CATEGORIES = {
+    "sponsor",
+    "selfpromo",
+    "interaction",
+    "intro",
+    "outro",
+    "preview",
+    "filler",
+    "music_offtopic",
+    "exclusive_access",
+    "chapter",
 }
 
 
@@ -108,6 +133,7 @@ def build_ydl_opts(
         "cachedir": False,
         "http_headers": HTTP_HEADERS,
         "extractor_args": {"youtube": {"player_client": ["tv"]}},
+        "nopart": True,  # NEW: Do not use .part files
     }
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
@@ -242,6 +268,8 @@ class Downloader(QThread):
         self._pause_evt.set()
         self._stop = False
         self._meta_threads: Dict[int, InfoFetcher] = {}
+        self._sb_active: Dict[int, bool] = {}
+        self._dl_filename: Dict[int, str] = {}
 
     def pause(self):
         self._pause_evt.clear()
@@ -265,6 +293,12 @@ class Downloader(QThread):
             if self._stop:
                 raise yt_dlp.utils.DownloadError("Stopped by user")
             status = d.get("status")
+            try:
+                fn = d.get("filename") or (d.get("info_dict") or {}).get("_filename")
+                if fn:
+                    self._dl_filename[idx] = fn
+            except Exception:
+                pass
             if status == "downloading":
                 total = d.get("total_bytes") or d.get("total_bytes_estimated") or 0
                 downloaded = d.get("downloaded_bytes", 0)
@@ -275,9 +309,47 @@ class Downloader(QThread):
             elif status == "finished":
                 self.itemStatus.emit(idx, "Processing...")
             elif status == "postprocessing":
-                self.itemStatus.emit(idx, "Processing...")
+                pp = d.get("postprocessor") or ""
+                if pp:
+                    sb_log(f"[{idx}] Postprocessor: {pp}")
+                if self._sb_active.get(idx):
+                    self.itemStatus.emit(idx, "removing")
+                else:
+                    self.itemStatus.emit(idx, "Processing...")
 
         return hook
+
+    # NEW: find the final output file after yt-dlp finishes (accounts for postprocessors)
+    def _resolve_output_file(self, idx: int, kind: str, fmt: str) -> str | None:
+        try:
+            p = self._dl_filename.get(idx)
+            if p and os.path.exists(p):
+                return p
+            it = self.items[idx] or {}
+            vid = str(it.get("id") or "").strip()
+            if not vid:
+                return p
+            import glob, time
+
+            candidates = glob.glob(os.path.join(self.base_dir, f"*[{vid}].*"))
+            if not candidates:
+                # small delay in case filesystem is slow to update
+                QThread.msleep(50)
+                candidates = glob.glob(os.path.join(self.base_dir, f"*[{vid}].*"))
+            if not candidates:
+                return p
+            # Prefer target format when possible
+            if kind == "audio" and fmt:
+                pref = [c for c in candidates if c.lower().endswith(f".{fmt.lower()}")]
+                if pref:
+                    return max(pref, key=lambda fp: os.path.getmtime(fp))
+            if kind == "video" and fmt:
+                pref = [c for c in candidates if c.lower().endswith(f".{fmt.lower()}")]
+                if pref:
+                    return max(pref, key=lambda fp: os.path.getmtime(fp))
+            return max(candidates, key=lambda fp: os.path.getmtime(fp))
+        except Exception:
+            return self._dl_filename.get(idx)
 
     def run(self):
         # Throttle initial thumbnail fetching to avoid overwhelming requests
@@ -312,8 +384,6 @@ class Downloader(QThread):
                 self.itemStatus.emit(idx, "Invalid URL")
                 continue
             self.itemStatus.emit(idx, "Starting...")
-
-            # Per-item overrides with fallback to global
             kind = (it.get("desired_kind") or self.kind or "audio").strip()
             fmt = (
                 it.get("desired_format")
@@ -322,11 +392,25 @@ class Downloader(QThread):
             ).strip()
             qual = (it.get("desired_quality") or self.quality or "best").strip()
 
-            # SponsorBlock (no API key required; use canonical API root)
+            # Prepare SponsorBlock settings - safely handle when not enabled
             sb_enabled = bool(it.get("sb_enabled"))
-            sb_cats = list(it.get("sb_categories") or [])
-            sb_api = "https://sponsor.ajay.app" if sb_enabled else None
+            sb_cats_raw = list(it.get("sb_categories") or [])
+            sb_cats = normalize_sb_categories(sb_cats_raw) if sb_enabled else []
+            self._sb_active[idx] = bool(sb_enabled and sb_cats)
 
+            # Only log SB info if enabled
+            if sb_enabled:
+                sb_log(
+                    f"[{idx}] URL={url} sb_enabled=True raw={sb_cats_raw} normalized={sb_cats} api=https://sponsor.ajay.app"
+                )
+                if not sb_cats:
+                    self.itemStatus.emit(idx, "SponsorBlock: no valid categories")
+                    sb_log(f"[{idx}] No valid SB categories; skipping removal")
+            else:
+                # Log when SB is explicitly disabled to help debugging
+                sb_log(f"[{idx}] URL={url} sb_enabled=False (SponsorBlock disabled)")
+
+            # Build yt-dlp options WITHOUT SB postprocessor (we handle it ourselves)
             opts = build_ydl_opts(
                 self.base_dir,
                 kind,
@@ -334,20 +418,50 @@ class Downloader(QThread):
                 self.ffmpeg_location,
                 self._hook_builder(idx),
                 qual,
-                sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
-                sponsorblock_api=sb_api,
+                sponsorblock_remove=None,
+                sponsorblock_api=None,
             )
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([url])
+
+                # Apply SB removal only if enabled and categories selected
+                if self._sb_active.get(idx):
+                    self.itemStatus.emit(idx, "removing")
+                    src = self._resolve_output_file(idx, kind, fmt)
+
+                    # Safety check: make sure file exists before processing
+                    if not src or not os.path.exists(src):
+                        sb_log(f"[{idx}] No file to process or path missing: {src}")
+                        self.itemStatus.emit(idx, "SponsorBlock: file not found")
+                    else:
+                        # Use the simplified, more reliable method
+                        ok = apply_sponsorblock_to_file(
+                            src,
+                            url,
+                            self.items[idx],
+                            sb_cats,
+                            lambda s: self.itemStatus.emit(idx, s),
+                            kind,
+                            fmt,
+                        )
+
+                        if not ok:
+                            self.itemStatus.emit(idx, "SponsorBlock: processing failed")
+                            sb_log(f"[{idx}] SponsorBlock processing failed")
+
+                # Final status update
                 if not self._stop:
                     self.itemProgress.emit(idx, 100.0, 0.0, 0)
                     self.itemStatus.emit(idx, "Done")
+                    if self._sb_active.get(idx):
+                        sb_log(f"[{idx}] Completed with SponsorBlock removal")
             except Exception as e:
                 if self._stop:
                     self.itemStatus.emit(idx, "Stopped")
                     break
                 self.itemStatus.emit(idx, f"Error: {e}")
+                sb_log(f"[{idx}] Error: {e!r}")
         self.finished_all.emit()
 
     def _start_meta_fetch(self, idx: int, url: str):
@@ -385,17 +499,6 @@ class Downloader(QThread):
 
     def _needs_metadata(self, it: dict) -> bool:
         """Check if an item needs metadata fetching"""
-        if not it:
-            return True
-        if not it.get("url") and not it.get("webpage_url"):
-            return False
-        has_core = (
-            bool(it.get("id")) or bool(it.get("duration")) or bool(it.get("extractor"))
-        )
-        has_thumb = bool(it.get("thumbnail")) or bool(it.get("thumbnails"))
-        return not (has_core and has_thumb)
-
-    def _needs_metadata(self, it: dict) -> bool:
         if not it:
             return True
         if not it.get("url") and not it.get("webpage_url"):

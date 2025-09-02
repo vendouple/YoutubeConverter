@@ -23,19 +23,16 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
     QCheckBox,
-    QLineEdit,
     QToolButton,
 )
-from PyQt6.QtGui import QIcon, QPixmap, QStandardItemModel, QStandardItem  # CHANGED
+from PyQt6.QtGui import QIcon, QPixmap, QStandardItemModel, QStandardItem  #
 
 from core.settings import AppSettings, SettingsManager
 from core.yt_manager import InfoFetcher
 
 
 class Step3QualityWidget(QWidget):
-    qualityConfirmed = pyqtSignal(
-        dict
-    )  # {"items":[...], "kind":..., "format":..., "quality": ...}
+    qualityConfirmed = pyqtSignal(dict)
     backRequested = pyqtSignal()
 
     def __init__(self, settings: AppSettings):
@@ -155,7 +152,6 @@ class Step3QualityWidget(QWidget):
         self.cmb_quality = QComboBox()
         right.addWidget(self._labeled("Quality:", self.cmb_quality))
 
-        # ADDED: Advanced (collapsed) section
         adv_toggle_row = QHBoxLayout()
         adv_toggle_row.setContentsMargins(0, 0, 0, 0)
         self.btn_adv = QToolButton()
@@ -188,24 +184,24 @@ class Step3QualityWidget(QWidget):
         )
         adv_lay.addWidget(self.chk_sb)
 
-        # NEW: multi-select combobox for categories (full set)
         self.cmb_sb_categories = QComboBox()
         self.cmb_sb_categories.setEditable(False)
         self.cmb_sb_categories.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.cmb_sb_categories.setToolTip(
+            "Select categories to cut from the output using SponsorBlock.\n"
+            "Warning: 'filler' is very aggressive; avoid enabling by default."
+        )
         m = QStandardItemModel(self.cmb_sb_categories)
         self.cmb_sb_categories.setModel(m)
         self._sb_options = [
             ("sponsor", "sponsor"),
+            ("selfpromo", "selfpromo"),
+            ("interaction", "interaction"),
             ("intro", "intro"),
             ("outro", "outro"),
-            ("interaction", "interaction"),
-            ("selfpromo", "selfpromo"),
-            ("non_music", "music_offtopic"),  # label renamed
             ("preview", "preview"),
-            ("poi_highlight", "poi_highlight"),
             ("filler", "filler"),
-            ("exclusive_access", "exclusive_access"),
-            ("chapter", "chapter"),
+            ("non_music", "music_offtopic"),
         ]
         for label, _key in self._sb_options:
             it = QStandardItem(label)
@@ -215,17 +211,18 @@ class Step3QualityWidget(QWidget):
 
         def _update_sb_display():
             sel = self._get_sb_categories()
-            self.cmb_sb_categories.setCurrentText(
-                "None"
-                if not sel
-                else ", ".join([lbl for (lbl, key) in self._sb_options if key in sel])
-            )
+            if not sel:
+                self.cmb_sb_categories.setCurrentText("None (click to choose)")
+            else:
+                labels = [lbl for (lbl, key) in self._sb_options if key in sel]
+                self.cmb_sb_categories.setCurrentText(", ".join(labels))
 
         def _toggle_item(idx):
             it = self.cmb_sb_categories.model().item(idx)
+            st = it.checkState()
             it.setCheckState(
                 Qt.CheckState.Unchecked
-                if it.checkState() == Qt.CheckState.Checked
+                if st == Qt.CheckState.Checked
                 else Qt.CheckState.Checked
             )
             _update_sb_display()
@@ -233,7 +230,7 @@ class Step3QualityWidget(QWidget):
 
         self.cmb_sb_categories.view().pressed.connect(lambda mi: _toggle_item(mi.row()))
         _update_sb_display()
-        adv_lay.addWidget(self._labeled("Segments:", self.cmb_sb_categories))
+        adv_lay.addWidget(self._labeled("Segments to remove:", self.cmb_sb_categories))
 
         # Enable/disable SB controls per toggle
         def _set_sb_enabled(on: bool):
@@ -264,15 +261,12 @@ class Step3QualityWidget(QWidget):
         # Signals
         self.btn_back.clicked.connect(self.backRequested.emit)
         self.btn_next.clicked.connect(self._confirm)
-        # CHANGED: react to kind toggle explicitly (both buttons)
         self.btn_audio.toggled.connect(self._on_kind_toggled)
         self.btn_video.toggled.connect(self._on_kind_toggled)
-        # Keep format/quality changes hook
         self.cmb_format.currentTextChanged.connect(self._on_controls_changed)
         self.cmb_quality.currentTextChanged.connect(self._on_controls_changed)
         self.chk_apply_all.toggled.connect(self._apply_all_toggled)
         self.preview.currentRowChanged.connect(self._on_preview_row_changed)
-        # Persist SponsorBlock choice on change
         self.chk_sb.toggled.connect(self._persist_sb_settings)
 
         # Timer (kept but unused for background refetch)
@@ -335,10 +329,9 @@ class Step3QualityWidget(QWidget):
         # Also refresh quality options for the new kind
         self._populate_quality_options()
 
-    # NEW: when toggling Audio/Video, update selection and UI coherently
     def _on_kind_toggled(self, checked: bool):
         if not checked:
-            return  # only act on the button being toggled ON
+            return
         kind = "audio" if self.btn_audio.isChecked() else "video"
         formats = self._formats_for_kind(kind)
         ctx = self._current_context_sel()
@@ -375,7 +368,6 @@ class Step3QualityWidget(QWidget):
 
         # Reset overrides when new items set
         self._per_item_sel.clear()
-        # CHANGED: Always enable Apply-to-all by default; hide when single item
         self.chk_apply_all.setChecked(True)
         self._apply_all = True
         self.chk_apply_all.setVisible(len(items) > 1)
@@ -410,7 +402,6 @@ class Step3QualityWidget(QWidget):
         self._update_warnings()
         self._load_controls_from_context()
 
-        # Initialize SB category selection from defaults (after UI is ready)
         try:
             self._set_sb_categories(
                 list(getattr(self.settings.defaults, "sponsorblock_categories", []))
@@ -479,11 +470,9 @@ class Step3QualityWidget(QWidget):
         self._load_controls_from_context()
         self._update_warnings()
 
-    # ADDED: when user switches selected item in list, reflect that item’s overrides
     def _on_preview_row_changed(self, row: int):
         self._load_controls_from_context()
 
-    # ADDED: push control changes into either global or per-item selection
     def _on_controls_changed(self, *_):
         kind = "audio" if self.btn_audio.isChecked() else "video"
         fmt = self.cmb_format.currentText().strip()
@@ -518,7 +507,6 @@ class Step3QualityWidget(QWidget):
         for w in (self.btn_audio, self.btn_video, self.cmb_format, self.cmb_quality):
             w.setEnabled(enable)
 
-    # ADDED: show warning markers on items inheriting defaults in per-item mode
     def _update_warnings(self):
         default_label = f"{self._global_sel['kind'].capitalize()}-{self._global_sel['format']}-{self._global_sel['quality']}"
         per_item_mode = not self._apply_all
@@ -658,4 +646,5 @@ class Step3QualityWidget(QWidget):
         lab = QLabel(text)
         lay.addWidget(lab)
         lay.addWidget(w, 1)
+        return row
         return row

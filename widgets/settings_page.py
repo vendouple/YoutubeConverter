@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QLabel,
     QMessageBox,
+    QHBoxLayout,
 )
 from core.settings import AppSettings
 
@@ -20,6 +21,7 @@ class SettingsPage(QWidget):
     checkAppCheckOnlyRequested = pyqtSignal()
     accentPickRequested = pyqtSignal()
     resetDefaultsRequested = pyqtSignal()
+    clearLogsRequested = pyqtSignal()  # NEW
 
     def __init__(self, settings: AppSettings):
         super().__init__()
@@ -134,6 +136,10 @@ class SettingsPage(QWidget):
         self.btn_reset_defaults.clicked.connect(self._confirm_reset_defaults)
         lay.addWidget(self.btn_reset_defaults, 0, Qt.AlignmentFlag.AlignRight)
 
+        self.btn_clear_logs = QPushButton("Clear All Logs")  # NEW
+        self.btn_clear_logs.clicked.connect(self._on_clear_logs)
+        lay.addWidget(self.btn_clear_logs, 0, Qt.AlignmentFlag.AlignRight)
+
         for w in (
             self.chk_auto_search_text,
             self.chk_ytdlp_auto,
@@ -156,6 +162,17 @@ class SettingsPage(QWidget):
             == QMessageBox.StandardButton.Yes
         ):
             self.resetDefaultsRequested.emit()
+
+    def _on_clear_logs(self):
+        if (
+            QMessageBox.question(
+                self,
+                "Clear logs",
+                "Delete all logs?",
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.clearLogsRequested.emit()
 
     def apply_to(self, settings: AppSettings):
         # UI

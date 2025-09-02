@@ -181,6 +181,9 @@ if getattr(sys, "frozen", False):
 # CHANGED: also import SETTINGS_DIR for user-writable path
 from core.settings import SettingsManager, AppSettings, SETTINGS_DIR
 
+# ADD: sponsorblock log dir
+from core.sponsorblock import sb_log_dir
+
 
 from core.ffmpeg_manager import FfmpegInstaller, ensure_ffmpeg_in_path
 from core.update import YtDlpUpdateWorker, AppUpdateWorker
@@ -384,6 +387,12 @@ class MainWindow(QMainWindow):
         self.settings_page.checkAppCheckOnlyRequested.connect(
             lambda: self._check_app_updates(check_only=True, prompt_on_available=True)
         )
+        # NEW: optional hook if SettingsPage exposes a clearLogsRequested signal
+        try:
+            if hasattr(self.settings_page, "clearLogsRequested"):
+                self.settings_page.clearLogsRequested.connect(self._clear_all_logs)
+        except Exception:
+            pass
 
     def _refresh_stepper_titles(self):
         self.stepper.set_steps(["Select", "Quality", "Download"])
@@ -520,6 +529,30 @@ class MainWindow(QMainWindow):
         # Persist changes immediately using SettingsPage
         self.settings_page.apply_to(self.settings)
         self.settings_mgr.save(self.settings)
+
+    # NEW: clear all logs handler (used by SettingsPage "Clear All Logs" button)
+    def _clear_all_logs(self):
+        import shutil
+
+        paths = set()
+        try:
+            paths.add(_log_dir())
+        except Exception:
+            pass
+        try:
+            paths.add(sb_log_dir())
+        except Exception:
+            pass
+        removed = 0
+        for p in list(paths):
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                    os.makedirs(p, exist_ok=True)
+                    removed += 1
+            except Exception:
+                pass
+        self._toast("Logs cleared" if removed else "No logs to clear")
 
     # --- Dependencies gating ---
     def _ffmpeg_ready(self) -> bool:
