@@ -2,12 +2,34 @@ class StyleManager:
     def __init__(self, accent_hex: str):
         self._accent = accent_hex
 
+    # NEW: color helpers
+    def _rgb_tuple(self, hex_color: str):
+        try:
+            s = hex_color.lstrip("#")
+            return tuple(int(s[i : i + 2], 16) for i in (0, 2, 4))
+        except Exception:
+            return (242, 140, 40)  # fallback
+
+    def _lighter(self, hex_color: str, factor: float = 1.15):
+        r, g, b = self._rgb_tuple(hex_color)
+        f = max(1.0, float(factor))
+        to = lambda x: max(0, min(255, int(x * f)))
+        return f"#{to(r):02x}{to(g):02x}{to(b):02x}"
+
+    def _rgba(self, hex_color: str, alpha: float = 0.25):
+        r, g, b = self._rgb_tuple(hex_color)
+        a = max(0.0, min(1.0, float(alpha)))
+        return f"rgba({r},{g},{b},{a})"
+
     def with_accent(self, hex_color: str):
         self._accent = hex_color
         return self.qss()
 
     def qss(self) -> str:
         ac = self._accent
+        ac_hover = self._lighter(ac, 1.2)  # slightly lighter than accent
+        ac_bg_on = self._rgba(ac, 0.25)  # subtle on background
+        ac_bg_hover = self._rgba(ac_hover, 0.35)  # stronger on hover
         return f"""
 /* Base */
 QWidget {{
@@ -109,22 +131,44 @@ QLineEdit, QComboBox, QTextEdit {{
     background: #222327; border: 1px solid #34353b; border-radius: 8px; padding: 6px 8px;
 }}
 
-/* Win11-like CheckBox indicator */
+/* Win11-like CheckBox (check mark box) */
+QCheckBox {{
+    spacing: 6px; /* space between box and label */
+}}
 QCheckBox::indicator {{
-    width: 18px; height: 18px;
-    border: 2px solid #5a5b61;
-    border-radius: 5px;
-    background: #2a2b30;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;                 /* rounded square */
+    background: #1f2024;                /* off background */
+    border: 2px solid #cfd0d4;          /* off border (light gray) */
     margin-right: 6px;
 }}
-QCheckBox::indicator:hover {{ border-color: {ac}; }}
+QCheckBox::indicator:hover {{
+    border-color: {ac_hover};           /* hover: distinct from accent */
+}}
 QCheckBox::indicator:checked {{
-    border-color: {ac};
+    border-color: {ac};                 /* on border: accent */
+    background: {ac_bg_on};             /* on background: subtle tint */
+}}
+QCheckBox::indicator:checked:hover {{
+    border-color: {ac_hover};           /* on+hover border: distinct hover accent */
+    background: {ac_bg_hover};          /* on+hover background: stronger tint */
+}}
+QCheckBox:checked {{
+    color: {ac};                        /* label accent when ON */
+}}
+QCheckBox:hover {{
+    color: {ac_hover};                  /* label hover color */
+}}
+QCheckBox::indicator:disabled {{
+    border-color: #57585e;
     background: #2a2b30;
-    image: url(:/qt-project.org/styles/commonstyle/images/checkboxindicatorcheck.png);
+}}
+QCheckBox:disabled {{
+    color: #8a8b90;
 }}
 
-/* Button-like checkbox ('Add multiple') */
+/* Button-like checkbox ('Add multiple') - keep existing look, hide indicator */
 QCheckBox#ButtonLike {{
     background: #2a2b30;
     border: 1px solid #33343a;

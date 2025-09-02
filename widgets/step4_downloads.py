@@ -253,7 +253,7 @@ class Step4DownloadsWidget(QWidget):
             f.start()
 
     def _cleanup_bg_metadata(self):  # NEW
-        # Disconnect finished signals to avoid updating stale widgets on later runs
+        """Safely disconnect and clean up metadata fetchers"""
         for i, f in list(self._meta_fetchers.items()):
             try:
                 f.finished_ok.disconnect()
@@ -265,8 +265,17 @@ class Step4DownloadsWidget(QWidget):
                 pass
         self._meta_fetchers.clear()
 
+        # Free memory
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+
     # NEW: small helper to mirror Downloader heuristic
     def _needs_metadata(self, it: dict) -> bool:
+        """Determine if an item needs metadata fetching"""
         if not it:
             return True
         if not it.get("url") and not it.get("webpage_url"):
@@ -350,9 +359,8 @@ class Step4DownloadsWidget(QWidget):
             self.downloader = None
         self.btn_start.setText("Start")
         self.btn_start.setEnabled(False)
-        self.btn_stop.setVisible(False)  # CHANGED
+        self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
-        # CHANGED: just clear any old bg metadata threads if present
         self._cleanup_bg_metadata()
 
     def _choose_dir(self):
@@ -366,13 +374,13 @@ class Step4DownloadsWidget(QWidget):
         w = self._get_widget(idx)
         if w:
             if not w.status.isVisible():
-                w.status.show()  # ensure visible after start
+                w.status.show()
             if not w.progress.isVisible():
                 w.progress.show()
             w.status.setText(text)
             # Busy indicator for processing phase
             if text.startswith("Processing"):
-                w.progress.setRange(0, 0)  # indeterminate
+                w.progress.setRange(0, 0)
             elif (
                 text.startswith("Error")
                 or text.startswith("Done")
@@ -405,7 +413,7 @@ class Step4DownloadsWidget(QWidget):
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )
-                )  # CHANGED
+                )
 
     def _get_widget(self, idx: int) -> Optional[DownloadItemWidget]:
         it = self.list.item(idx)
@@ -416,7 +424,7 @@ class Step4DownloadsWidget(QWidget):
     def _on_all_finished(self):
         self.btn_done.setVisible(True)
         self.btn_start.setEnabled(False)
-        self.btn_stop.setVisible(False)  # CHANGED
+        self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
         self.btn_start.setText("Start")
         self.downloader = None
@@ -431,6 +439,7 @@ class Step4DownloadsWidget(QWidget):
         self.reset()
 
     def reset(self):
+        """Reset widget to initial state and free resources"""
         self._cleanup_bg_metadata()
         self.list.clear()
         self.items = []
@@ -438,10 +447,23 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setText("Start")
         self.btn_start.setEnabled(False)
         self.btn_done.setVisible(False)
-        self.downloader = None
-        self.btn_start.setText("Start")  # NEW: ensure label is correct after reset
-        self.btn_start.setEnabled(False)
-        self.btn_done.setVisible(False)
+
+        # Clear thumbnail threads
+        for worker in self._thumb_threads:
+            try:
+                if worker.isRunning():
+                    worker.disconnect()
+            except Exception:
+                pass
+        self._thumb_threads.clear()
+
+        # Force garbage collection
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
 
     # NEW: apply a thumbnail to the matching list widget by video URL
     def _set_dl_thumb_if_match(self, video_url: str, pix: QPixmap):

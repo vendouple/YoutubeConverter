@@ -476,6 +476,13 @@ class MainWindow(QMainWindow):
                 "Installing required tools (FFmpeg/yt-dlp). Try again when finished.",
             )
             return
+        # If only one item was selected in multi mode, use single-video path
+        if len(items) == 1:
+            s = items[0] or {}
+            self._advance_single_from_step1(
+                {"url": s.get("webpage_url") or s.get("url"), "info": s}
+            )
+            return
         self.step3.set_items(items)
         self.flow_stack.setCurrentIndex(1)
         self.stepper.set_current(1)

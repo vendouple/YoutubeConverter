@@ -1,6 +1,7 @@
 import json
 import os
 from dataclasses import dataclass, asdict, field
+from typing import List  # ADDED
 
 
 def _user_config_dir() -> str:
@@ -37,6 +38,12 @@ class UISettings:
 class DefaultsSettings:
     kind: str = "audio"
     format: str = "mp3"
+    # SponsorBlock defaults (remember last config)
+    sponsorblock_enabled: bool = False
+    sponsorblock_categories: List[str] = field(
+        default_factory=lambda: ["sponsor", "selfpromo"]
+    )
+    sponsorblock_api_key: str = ""
 
 
 @dataclass
@@ -113,7 +120,5 @@ class SettingsManager:
     def save(self, settings: AppSettings):
         data = asdict(settings)
         os.makedirs(SETTINGS_DIR, exist_ok=True)
-        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)

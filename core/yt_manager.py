@@ -8,9 +8,11 @@ import requests
 import json
 from core.update import YTDLP_EXE
 
+# Centralized HTTP headers with client identifier
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
     "Accept-Language": "en-US,en;q=0.5",
+    "X-Client-App": "YoutubeConverter",  # Attribution header
 }
 EXTRACTOR_ARGS = {
     "youtube": {"player_client": ["tv"], "skip": ["dash", "hls"]},
@@ -34,6 +36,8 @@ def build_ydl_opts(
     ffmpeg_location: Optional[str] = None,
     progress_hook: Optional[Callable] = None,
     quality: Optional[str] = None,
+    sponsorblock_remove: Optional[List[str]] = None,
+    sponsorblock_api: Optional[str] = None,
 ):
     outtmpl = os.path.join(base_dir, "%(title).200s [%(id)s].%(ext)s")
     postprocessors = []
@@ -107,6 +111,11 @@ def build_ydl_opts(
     }
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
+    # SponsorBlock options: let yt-dlp wire its postprocessor in correct order
+    if sponsorblock_remove:
+        opts["sponsorblock_remove"] = list(sponsorblock_remove)
+    if sponsorblock_api:
+        opts["sponsorblock_api"] = sponsorblock_api
     return opts
 
 
@@ -272,6 +281,8 @@ class Downloader(QThread):
         return hook
 
     def run(self):
+        # Throttle initial thumbnail fetching to avoid overwhelming requests
+        thumb_queue = []
         for idx, it in enumerate(self.items):
             thumb_url = (
                 (it.get("thumbnail") or it.get("thumbnails", [{}])[-1].get("url"))
@@ -279,12 +290,20 @@ class Downloader(QThread):
                 else None
             )
             if thumb_url:
+                thumb_queue.append((idx, thumb_url))
+
+        # Process thumbs in batches of 5 to avoid network overload
+        for i in range(0, len(thumb_queue), 5):
+            batch = thumb_queue[i : i + 5]
+            for idx, thumb_url in batch:
                 try:
-                    r = requests.get(thumb_url, timeout=10)
+                    r = requests.get(thumb_url, timeout=5)
                     if r.ok:
                         self.itemThumb.emit(idx, r.content)
                 except Exception:
                     pass
+                # Small delay between requests
+                QThread.msleep(50)
 
         for idx, it in enumerate(self.items):
             if self._stop:
@@ -294,13 +313,30 @@ class Downloader(QThread):
                 self.itemStatus.emit(idx, "Invalid URL")
                 continue
             self.itemStatus.emit(idx, "Starting...")
+
+            # Per-item overrides with fallback to global
+            kind = (it.get("desired_kind") or self.kind or "audio").strip()
+            fmt = (
+                it.get("desired_format")
+                or self.fmt
+                or ("mp3" if kind == "audio" else "mp4")
+            ).strip()
+            qual = (it.get("desired_quality") or self.quality or "best").strip()
+
+            # SponsorBlock (no API key required; use canonical API root)
+            sb_enabled = bool(it.get("sb_enabled"))
+            sb_cats = list(it.get("sb_categories") or [])
+            sb_api = "https://sponsor.ajay.app" if sb_enabled else None
+
             opts = build_ydl_opts(
                 self.base_dir,
-                self.kind,
-                self.fmt,
+                kind,
+                fmt,
                 self.ffmpeg_location,
                 self._hook_builder(idx),
-                self.quality,
+                qual,
+                sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
+                sponsorblock_api=sb_api,
             )
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
@@ -349,6 +385,7 @@ class Downloader(QThread):
         f.start()
 
     def _needs_metadata(self, it: dict) -> bool:
+        """Check if an item needs metadata fetching"""
         if not it:
             return True
         if not it.get("url") and not it.get("webpage_url"):
@@ -358,8 +395,6 @@ class Downloader(QThread):
         )
         has_thumb = bool(it.get("thumbnail")) or bool(it.get("thumbnails"))
         return not (has_core and has_thumb)
-
-    def _extract_info_quick(self, url: str) -> dict:
         ydl_opts = {
             "quiet": True,
             "skip_download": True,
