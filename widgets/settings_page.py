@@ -42,6 +42,11 @@ class SettingsPage(QWidget):
         frm_general.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.btn_accent = QPushButton("Pick accent color")
         self.btn_accent.clicked.connect(self.accentPickRequested.emit)
+        frm_general.addRow(
+            QLabel(
+                "Accent colors such as loading bars need a program restart to be updated"
+            )
+        )
         frm_general.addRow("Accent color", self.btn_accent)
         lay.addWidget(grp_general)
 

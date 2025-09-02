@@ -504,7 +504,7 @@ class MainWindow(QMainWindow):
             pass
         self.flow_stack.setCurrentIndex(0)
         self.stepper.set_current(0)
-        self._toast("Downloads finished.")  # OPTIONAL: cleaner end notice
+        self._toast("Downloads finished.")
 
     def _pick_accent(self):
         from PyQt6.QtWidgets import QColorDialog
@@ -514,7 +514,7 @@ class MainWindow(QMainWindow):
             self.settings.ui.accent_color_hex = c.name()
             self.setStyleSheet(self.style_mgr.with_accent(c.name()))
             self._settings_changed()
-            self._toast(f"Accent changed to {c.name()}")  # CHANGED
+            self._toast(f"Accent changed to {c.name()}")
 
     def _settings_changed(self):
         # Persist changes immediately using SettingsPage

@@ -12,7 +12,7 @@ from core.update import YTDLP_EXE
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
     "Accept-Language": "en-US,en;q=0.5",
-    "X-Client-App": "YoutubeConverter",  # Attribution header
+    "X-Client-App": "YoutubeConverter",
 }
 EXTRACTOR_ARGS = {
     "youtube": {"player_client": ["tv"], "skip": ["dash", "hls"]},
@@ -111,7 +111,6 @@ def build_ydl_opts(
     }
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
-    # SponsorBlock options: let yt-dlp wire its postprocessor in correct order
     if sponsorblock_remove:
         opts["sponsorblock_remove"] = list(sponsorblock_remove)
     if sponsorblock_api:
@@ -395,19 +394,6 @@ class Downloader(QThread):
         )
         has_thumb = bool(it.get("thumbnail")) or bool(it.get("thumbnails"))
         return not (has_core and has_thumb)
-        ydl_opts = {
-            "quiet": True,
-            "skip_download": True,
-            "noprogress": True,
-            "noplaylist": False,
-            "socket_timeout": 15,
-            "extractor_retries": 1,
-            "cachedir": False,
-            "http_headers": HTTP_HEADERS,
-            "extractor_args": EXTRACTOR_ARGS,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(url, download=False)
 
     def _needs_metadata(self, it: dict) -> bool:
         if not it:
