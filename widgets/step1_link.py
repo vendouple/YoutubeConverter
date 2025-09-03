@@ -1128,12 +1128,9 @@ class Step1LinkWidget(QWidget):
                     break
 
             if first is None:
-                # Fallback: queue the first screenful
                 first = 0
-                # heuristic: try ~30 items
                 last = min(count - 1, 29)
             else:
-                # Add small buffer to avoid loading gaps while scrolling
                 first = max(0, first - 5)
                 last = min(count - 1, (last if last is not None else first) + 5)
 

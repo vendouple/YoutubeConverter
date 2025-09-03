@@ -7,18 +7,6 @@ import subprocess
 import requests
 import json
 from core.update import YTDLP_EXE
-from datetime import datetime  # NEW
-from urllib.parse import urlparse, parse_qs  # NEW
-import tempfile  # NEW
-
-# ADD: import SponsorBlock helpers
-from core.sponsorblock import (
-    normalize_sb_categories,
-    apply_sponsorblock_to_file,
-    sb_log,
-    extract_video_id,  # NEW
-    fetch_segments,  # NEW
-)
 
 # Centralized HTTP headers with client identifier
 HTTP_HEADERS = {
@@ -81,13 +69,13 @@ def build_ydl_opts(
             return None
 
     if kind == "audio":
-        postprocessors = [
+        postprocessors.append(
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": fmt,
                 "preferredquality": "0",
             }
-        ]
+        )
         if q != "best":
             abr = _parse_abr(q) or 0
             format_selector = f"bestaudio[abr>={abr}]/bestaudio/best"
@@ -133,14 +121,29 @@ def build_ydl_opts(
         "cachedir": False,
         "http_headers": HTTP_HEADERS,
         "extractor_args": {"youtube": {"player_client": ["tv"]}},
-        "nopart": True,  # NEW: Do not use .part files
     }
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
+
+    # Pass SponsorBlock via yt-dlp native options (CLI-equivalent)
+    sb_cats_list: List[str] = []
     if sponsorblock_remove:
-        opts["sponsorblock_remove"] = list(sponsorblock_remove)
-    if sponsorblock_api:
-        opts["sponsorblock_api"] = sponsorblock_api
+        try:
+            sb_cats_list = [
+                str(c).strip() for c in sponsorblock_remove if str(c).strip()
+            ]
+        except Exception:
+            sb_cats_list = list(sponsorblock_remove)
+    # sanitize to known categories
+    if sb_cats_list:
+        sb_cats_list = [c for c in sb_cats_list if c in _VALID_SB_CATEGORIES]
+
+    # CHANGED: allow SponsorBlock for audio and video in Python fallback
+    if sb_cats_list:
+        opts["sponsorblock_remove"] = ",".join(sb_cats_list)
+        if sponsorblock_api:
+            opts["sponsorblock_api"] = sponsorblock_api
+        print(f"SponsorBlock remove set to: {opts['sponsorblock_remove']}")
     return opts
 
 
@@ -268,7 +271,6 @@ class Downloader(QThread):
         self._pause_evt.set()
         self._stop = False
         self._meta_threads: Dict[int, InfoFetcher] = {}
-        self._sb_active: Dict[int, bool] = {}
         self._dl_filename: Dict[int, str] = {}
 
     def pause(self):
@@ -309,13 +311,16 @@ class Downloader(QThread):
             elif status == "finished":
                 self.itemStatus.emit(idx, "Processing...")
             elif status == "postprocessing":
-                pp = d.get("postprocessor") or ""
-                if pp:
-                    sb_log(f"[{idx}] Postprocessor: {pp}")
-                if self._sb_active.get(idx):
-                    self.itemStatus.emit(idx, "removing")
+                # Be explicit about which PP is running
+                pp = (d.get("postprocessor") or "").lower()
+                if "sponsorblock" in pp:
+                    self.itemStatus.emit(idx, "Removing segments…")
+                elif "extractaudio" in pp or "ffmpegextractaudio" in pp:
+                    self.itemStatus.emit(idx, "Converting audio…")
+                elif "merge" in pp or "remux" in pp:
+                    self.itemStatus.emit(idx, "Merging…")
                 else:
-                    self.itemStatus.emit(idx, "Processing...")
+                    self.itemStatus.emit(idx, "Processing…")
 
         return hook
 
@@ -350,6 +355,189 @@ class Downloader(QThread):
             return max(candidates, key=lambda fp: os.path.getmtime(fp))
         except Exception:
             return self._dl_filename.get(idx)
+
+    # NEW: Build CLI args for yt-dlp binary to mirror Python options
+    def _build_cli_args(
+        self,
+        url: str,
+        kind: str,
+        fmt: str,
+        quality: str,
+        base_dir: str,
+        ffmpeg_location: Optional[str],
+        sb_enabled: bool,
+        sb_cats: List[str],
+    ) -> List[str]:
+        outtmpl = os.path.join(base_dir, "%(title).200s [%(id)s].%(ext)s")
+        args = [
+            YTDLP_EXE,
+            "--ignore-config",
+            "--no-warnings",
+            "--newline",
+            "--no-cache-dir",
+            "-o",
+            outtmpl,
+        ]
+
+        # Format selection based on kind/quality
+        q = (quality or "best").lower()
+        if kind == "audio":
+            # Prefer higher ABR if specified
+            if q != "best":
+                try:
+                    abr = int(q.rstrip("k"))
+                except Exception:
+                    abr = 0
+                fsel = f"bestaudio[abr>={abr}]/bestaudio/best"
+            else:
+                fsel = "bestaudio/best"
+            args += ["-f", fsel, "-x", "--audio-format", fmt]
+        else:
+            # video
+            def _video_selector(height: Optional[int], ext: Optional[str]) -> str:
+                if ext == "mp4":
+                    if height:
+                        return (
+                            f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/"
+                            f"best[height<={height}][ext=mp4]/best[ext=mp4]/best"
+                        )
+                    return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                else:
+                    if height:
+                        return (
+                            f"bestvideo[height<={height}]+bestaudio/"
+                            f"best[height<={height}]/best"
+                        )
+                    return "bestvideo+bestaudio/best"
+
+            height = (
+                None
+                if q == "best"
+                else (
+                    int(q.rstrip("p")) if q.endswith("p") and q[:-1].isdigit() else None
+                )
+            )
+            fsel = _video_selector(height, fmt.lower())
+            args += ["-f", fsel, "--merge-output-format", fmt]
+
+        # CHANGED: SponsorBlock for both audio and video; also mark chapters to ensure cutting works
+        if sb_enabled:
+            cats = [c for c in (sb_cats or []) if c in _VALID_SB_CATEGORIES]
+            args += ["--sponsorblock-mark", "all"]
+            if cats:
+                args += ["--sponsorblock-remove", ",".join(cats)]
+
+        # FFmpeg location (if provided)
+        if ffmpeg_location:
+            args += ["--ffmpeg-location", ffmpeg_location]
+
+        # Progress template
+        args += [
+            "--progress-template",
+            "download:DL|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.speed)s|%(progress.eta)s",
+        ]
+
+        args.append(url)
+        return args
+
+    # NEW: parse progress lines from yt-dlp stdout
+    def _parse_progress_line(self, line: str):
+        # Expected: "DL|downloaded|total|speed|eta"
+        try:
+            if not line.startswith("DL|"):
+                return None
+            parts = line.strip().split("|")
+            if len(parts) != 5:
+                return None
+            downloaded = float(parts[1]) if parts[1] not in ("", "None") else 0.0
+            total = float(parts[2]) if parts[2] not in ("", "None") else 0.0
+            speed = float(parts[3]) if parts[3] not in ("", "None") else 0.0
+            eta = float(parts[4]) if parts[4] not in ("", "None") else 0.0
+            pct = (downloaded / total * 100.0) if total > 0 else 0.0
+            return pct, speed, int(eta)
+        except Exception:
+            return None
+
+    # NEW: download using the yt-dlp binary (preferred for SponsorBlock correctness)
+    def _download_with_binary(
+        self,
+        idx: int,
+        url: str,
+        kind: str,
+        fmt: str,
+        qual: str,
+        sb_enabled: bool,
+        sb_cats: List[str],
+    ) -> bool:
+        try:
+            args = self._build_cli_args(
+                url,
+                kind,
+                fmt,
+                qual,
+                self.base_dir,
+                self.ffmpeg_location,
+                sb_enabled,
+                sb_cats,
+            )
+            kwargs = _win_no_window_kwargs()
+            # NEW: disable third-party plugins for stability
+            env = os.environ.copy()
+            env["YTDLP_NO_PLUGINS"] = "1"
+            proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                env=env,
+                **kwargs,
+            )
+            self.itemStatus.emit(idx, "Downloading...")
+            for line in proc.stdout or []:
+                # CHANGED: never block reading stdout; just suppress UI updates while paused
+                paused = not self._pause_evt.is_set()
+                if self._stop:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    self.itemStatus.emit(idx, "Stopped")
+                    return False
+                if not line:
+                    continue
+
+                p = self._parse_progress_line(line)
+                if p and not paused:
+                    pct, speed, eta = p
+                    self.itemProgress.emit(idx, pct, speed, eta)
+                    continue
+
+                s = line.strip().lower()
+                if "sponsorblock" in s and not paused:
+                    self.itemStatus.emit(idx, "Removing segments…")
+                elif "extractaudio" in s and not paused:
+                    self.itemStatus.emit(idx, "Converting audio…")
+                elif (
+                    "[merger]" in s or "merging formats" in s or "remux" in s
+                ) and not paused:
+                    self.itemStatus.emit(idx, "Merging…")
+                elif "post-processing" in s and not paused:
+                    self.itemStatus.emit(idx, "Processing…")
+
+            code = proc.wait()
+            if code != 0:
+                self.itemStatus.emit(idx, f"Error: yt-dlp failed (code {code})")
+                return False
+
+            if not self._stop:
+                self.itemProgress.emit(idx, 100.0, 0.0, 0)
+                self.itemStatus.emit(idx, "Done")
+            return True
+        except Exception as e:
+            self.itemStatus.emit(idx, f"Error: {e}")
+            return False
 
     def run(self):
         # Throttle initial thumbnail fetching to avoid overwhelming requests
@@ -392,25 +580,29 @@ class Downloader(QThread):
             ).strip()
             qual = (it.get("desired_quality") or self.quality or "best").strip()
 
-            # Prepare SponsorBlock settings - safely handle when not enabled
+            # SponsorBlock settings
             sb_enabled = bool(it.get("sb_enabled"))
-            sb_cats_raw = list(it.get("sb_categories") or [])
-            sb_cats = normalize_sb_categories(sb_cats_raw) if sb_enabled else []
-            self._sb_active[idx] = bool(sb_enabled and sb_cats)
+            sb_cats = [
+                c for c in (it.get("sb_categories") or []) if c in _VALID_SB_CATEGORIES
+            ]
+            print(
+                f"Item {idx} SponsorBlock: enabled={sb_enabled}, categories={sb_cats}"
+            )
 
-            # Only log SB info if enabled
-            if sb_enabled:
-                sb_log(
-                    f"[{idx}] URL={url} sb_enabled=True raw={sb_cats_raw} normalized={sb_cats} api=https://sponsor.ajay.app"
+            binary_exists = os.path.exists(YTDLP_EXE)
+            if not binary_exists:
+                print(
+                    f"Warning: yt-dlp binary not found at {YTDLP_EXE}, falling back to Python API"
                 )
-                if not sb_cats:
-                    self.itemStatus.emit(idx, "SponsorBlock: no valid categories")
-                    sb_log(f"[{idx}] No valid SB categories; skipping removal")
-            else:
-                # Log when SB is explicitly disabled to help debugging
-                sb_log(f"[{idx}] URL={url} sb_enabled=False (SponsorBlock disabled)")
 
-            # Build yt-dlp options WITHOUT SB postprocessor (we handle it ourselves)
+            if binary_exists:
+                ok = self._download_with_binary(
+                    idx, url, kind, fmt, qual, sb_enabled, sb_cats
+                )
+                if ok:
+                    continue  # success; next item
+
+            # Fallback to Python API (keep SB enabled here too)
             opts = build_ydl_opts(
                 self.base_dir,
                 kind,
@@ -418,93 +610,21 @@ class Downloader(QThread):
                 self.ffmpeg_location,
                 self._hook_builder(idx),
                 qual,
-                sponsorblock_remove=None,
-                sponsorblock_api=None,
+                sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
+                sponsorblock_api=("https://sponsor.ajay.app" if sb_enabled else None),
+            )
+            print(
+                f"yt-dlp options for item {idx}: SB={sb_enabled}, formats={opts.get('format')}"
             )
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([url])
-
-                # Apply SB removal only if enabled and categories selected
-                if self._sb_active.get(idx):
-                    self.itemStatus.emit(idx, "removing")
-                    src = self._resolve_output_file(idx, kind, fmt)
-
-                    # Safety check: make sure file exists before processing
-                    if not src or not os.path.exists(src):
-                        sb_log(f"[{idx}] No file to process or path missing: {src}")
-                        self.itemStatus.emit(idx, "SponsorBlock: file not found")
-                    else:
-                        # Use the simplified, more reliable method
-                        ok = apply_sponsorblock_to_file(
-                            src,
-                            url,
-                            self.items[idx],
-                            sb_cats,
-                            lambda s: self.itemStatus.emit(idx, s),
-                            kind,
-                            fmt,
-                        )
-
-                        if not ok:
-                            self.itemStatus.emit(idx, "SponsorBlock: processing failed")
-                            sb_log(f"[{idx}] SponsorBlock processing failed")
-
-                # Final status update
                 if not self._stop:
                     self.itemProgress.emit(idx, 100.0, 0.0, 0)
                     self.itemStatus.emit(idx, "Done")
-                    if self._sb_active.get(idx):
-                        sb_log(f"[{idx}] Completed with SponsorBlock removal")
             except Exception as e:
                 if self._stop:
                     self.itemStatus.emit(idx, "Stopped")
                     break
                 self.itemStatus.emit(idx, f"Error: {e}")
-                sb_log(f"[{idx}] Error: {e!r}")
         self.finished_all.emit()
-
-    def _start_meta_fetch(self, idx: int, url: str):
-        if idx in self._meta_threads:
-            return
-        self.itemStatus.emit(idx, "Fetching metadata...")
-        f = InfoFetcher(url)
-
-        def _ok(meta: dict, i=idx):
-            try:
-                self.items[i] = {**self.items[i], **(meta or {})}
-                thumb_url = self.items[i].get("thumbnail") or (
-                    self.items[i].get("thumbnails") or [{}]
-                )[-1].get("url")
-                if thumb_url:
-                    try:
-                        r = requests.get(thumb_url, timeout=10)
-                        if r.ok:
-                            self.itemThumb.emit(i, r.content)
-                    except Exception:
-                        pass
-                title = self.items[i].get("title") or "Untitled"
-                self.itemStatus.emit(i, f"Metadata ready: {title}")
-            finally:
-                self._meta_threads.pop(i, None)
-
-        def _fail(err: str, i=idx):
-            self.itemStatus.emit(i, f"Metadata fetch failed, will try best available")
-            self._meta_threads.pop(i, None)
-
-        f.finished_ok.connect(_ok)
-        f.finished_fail.connect(_fail)
-        self._meta_threads[idx] = f
-        f.start()
-
-    def _needs_metadata(self, it: dict) -> bool:
-        """Check if an item needs metadata fetching"""
-        if not it:
-            return True
-        if not it.get("url") and not it.get("webpage_url"):
-            return False
-        has_core = (
-            bool(it.get("id")) or bool(it.get("duration")) or bool(it.get("extractor"))
-        )
-        has_thumb = bool(it.get("thumbnail")) or bool(it.get("thumbnails"))
-        return not (has_core and has_thumb)

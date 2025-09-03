@@ -181,10 +181,6 @@ if getattr(sys, "frozen", False):
 # CHANGED: also import SETTINGS_DIR for user-writable path
 from core.settings import SettingsManager, AppSettings, SETTINGS_DIR
 
-# ADD: sponsorblock log dir
-from core.sponsorblock import sb_log_dir
-
-
 from core.ffmpeg_manager import FfmpegInstaller, ensure_ffmpeg_in_path
 from core.update import YtDlpUpdateWorker, AppUpdateWorker
 from core.yt_manager import InfoFetcher  # kept
@@ -539,10 +535,6 @@ class MainWindow(QMainWindow):
             paths.add(_log_dir())
         except Exception:
             pass
-        try:
-            paths.add(sb_log_dir())
-        except Exception:
-            pass
         removed = 0
         for p in list(paths):
             try:
@@ -743,7 +735,6 @@ class MainWindow(QMainWindow):
             )
         btn_update.setStyleSheet(
             f"QPushButton {{ background: {accent}; color: #ffffff; border: 1px solid {accent}; border-radius: 8px; padding: 6px 12px; }}"
-            f"QPushButton:hover {{ filter: brightness(1.05); }}"
         )
 
         btns.accepted.connect(dlg.accept)

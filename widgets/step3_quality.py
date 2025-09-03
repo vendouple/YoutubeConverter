@@ -191,6 +191,40 @@ class Step3QualityWidget(QWidget):
             "Select categories to cut from the output using SponsorBlock.\n"
             "Warning: 'filler' is very aggressive; avoid enabling by default."
         )
+        accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28") or "#F28C28"
+        self.cmb_sb_categories.setMinimumWidth(260)
+        self.cmb_sb_categories.setStyleSheet(
+            f"""
+            QComboBox {{
+                background: #1f1f23;
+                border: 1px solid #3a3b40;
+                border-radius: 8px;
+                padding: 6px 12px;
+                min-height: 28px;
+            }}
+            QComboBox:hover {{
+                border-color: {accent};
+            }}
+            QComboBox:focus {{
+                border: 2px solid {accent};
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 28px;
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{
+                background: #1f1f23;
+                border: 1px solid #3a3b40;
+                border-radius: 8px;
+                outline: none;
+                selection-background-color: #2b2c31;
+                padding: 4px;
+            }}
+            """
+        )
+
         m = QStandardItemModel(self.cmb_sb_categories)
         self.cmb_sb_categories.setModel(m)
         self._sb_options = [
@@ -201,7 +235,10 @@ class Step3QualityWidget(QWidget):
             ("outro", "outro"),
             ("preview", "preview"),
             ("filler", "filler"),
-            ("non_music", "music_offtopic"),
+            (
+                "non_music",
+                "music_offtopic",
+            ),
         ]
         for label, _key in self._sb_options:
             it = QStandardItem(label)
@@ -217,6 +254,7 @@ class Step3QualityWidget(QWidget):
                 labels = [lbl for (lbl, key) in self._sb_options if key in sel]
                 self.cmb_sb_categories.setCurrentText(", ".join(labels))
 
+        # Add debug output
         def _toggle_item(idx):
             it = self.cmb_sb_categories.model().item(idx)
             st = it.checkState()
@@ -227,6 +265,8 @@ class Step3QualityWidget(QWidget):
             )
             _update_sb_display()
             self._persist_sb_settings()
+            # Debug output of categories
+            print(f"SponsorBlock categories selected: {self._get_sb_categories()}")
 
         self.cmb_sb_categories.view().pressed.connect(lambda mi: _toggle_item(mi.row()))
         _update_sb_display()
@@ -461,8 +501,11 @@ class Step3QualityWidget(QWidget):
                     key = next((k for (l, k) in self._sb_options if l == lbl), None)
                     if key:
                         res.append(key)
+            # Debug print current categories when fetched
+            print(f"SponsorBlock categories being used: {res}")
             return res
-        except Exception:
+        except Exception as e:
+            print(f"Error getting SponsorBlock categories: {e}")
             return []
 
     def _apply_all_toggled(self, checked: bool):
@@ -611,6 +654,11 @@ class Step3QualityWidget(QWidget):
         # Gather SponsorBlock prefs (global)
         sb_enabled = bool(self.chk_sb.isChecked())
         sb_cats = self._get_sb_categories()
+
+        # Log SponsorBlock settings for debugging
+        print(f"SponsorBlock enabled: {sb_enabled}")
+        print(f"SponsorBlock categories: {sb_cats}")
+
         items_aug: List[Dict] = []
         for i, it in enumerate(self.items):
             d = dict(it)
