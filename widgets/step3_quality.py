@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QGraphicsOpacityEffect,
     QCheckBox,
     QToolButton,
-    QSizePolicy,  # ADDED
+    QSizePolicy,
 )
 from PyQt6.QtGui import QIcon, QPixmap, QStandardItemModel, QStandardItem  #
 
@@ -177,7 +177,6 @@ class Step3QualityWidget(QWidget):
         adv_lay.setSpacing(8)
         self.btn_adv.toggled.connect(self.adv_panel.setVisible)
         right.addWidget(self.adv_panel)
-        # NEW: prevent Advanced panel from impacting horizontal min size
         self.adv_panel.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
