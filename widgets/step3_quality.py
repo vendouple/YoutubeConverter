@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QGraphicsOpacityEffect,
     QCheckBox,
     QToolButton,
+    QSizePolicy,  # ADDED
 )
 from PyQt6.QtGui import QIcon, QPixmap, QStandardItemModel, QStandardItem  #
 
@@ -176,6 +177,10 @@ class Step3QualityWidget(QWidget):
         adv_lay.setSpacing(8)
         self.btn_adv.toggled.connect(self.adv_panel.setVisible)
         right.addWidget(self.adv_panel)
+        # NEW: prevent Advanced panel from impacting horizontal min size
+        self.adv_panel.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
 
         # SponsorBlock inside Advanced
         self.chk_sb = QCheckBox("Remove segments with SponsorBlock")
@@ -192,7 +197,14 @@ class Step3QualityWidget(QWidget):
             "Warning: 'filler' is very aggressive; avoid enabling by default."
         )
         accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28") or "#F28C28"
-        self.cmb_sb_categories.setMinimumWidth(260)
+        self.cmb_sb_categories.setMinimumWidth(0)
+        self.cmb_sb_categories.setMinimumContentsLength(12)
+        self.cmb_sb_categories.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.cmb_sb_categories.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.cmb_sb_categories.setStyleSheet(
             f"""
             QComboBox {{
