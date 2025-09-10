@@ -1,4 +1,6 @@
-![Logo](YTConverterIcon.png)
+<p align="center">
+<img src="YTConverterIcon.png" width="300" alt="Logo">
+</p>
 
 # Youtube Converter
 
