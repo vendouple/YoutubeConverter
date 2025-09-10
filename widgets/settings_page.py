@@ -50,6 +50,18 @@ class SettingsPage(QWidget):
             )
         )
         frm_general.addRow("Accent color", self.btn_accent)
+        self.cmb_notifications = QComboBox()
+        self.cmb_notifications.addItems(["detailed", "minimal", "none"])
+        self.cmb_notifications.setCurrentText(
+            getattr(settings.app, "notifications_detail", "detailed")
+        )
+        # frm_general.addRow("Notifications", self.cmb_notifications)
+        # hidden, Soon...
+        self.chk_auto_reset = QCheckBox()
+        self.chk_auto_reset.setChecked(
+            bool(getattr(settings.app, "auto_reset_after_downloads", True))
+        )
+        frm_general.addRow("Auto reset after downloads", self.chk_auto_reset)
         lay.addWidget(grp_general)
 
         grp_search = QGroupBox("Search")
@@ -70,6 +82,34 @@ class SettingsPage(QWidget):
         )
         frm_search.addRow("Search debounce (s)", self.spn_search_debounce)
         lay.addWidget(grp_search)
+
+        # NEW: EZ Mode
+        grp_ez = QGroupBox("EZ Mode")
+        frm_ez = QFormLayout(grp_ez)
+        frm_ez.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self.chk_ez_sanitize = QCheckBox()
+        self.chk_ez_sanitize.setChecked(settings.ez.sanitize_radio_links)
+        frm_ez.addRow("Sanitize radio links", self.chk_ez_sanitize)
+        self.chk_ez_simple = QCheckBox()
+        self.chk_ez_simple.setChecked(settings.ez.simple_paste_mode)
+        frm_ez.addRow("Simple paste mode", self.chk_ez_simple)
+        self.chk_ez_hide_adv = QCheckBox()
+        self.chk_ez_hide_adv.setChecked(settings.ez.hide_advanced_quality)
+        frm_ez.addRow("Hide advanced quality", self.chk_ez_hide_adv)
+
+        # NEW: disable sanitize toggle when Simple paste is on (it's enforced)
+        def _sync_ez_controls(on: bool):
+            if on:
+                self.chk_ez_sanitize.setChecked(True)
+                self.chk_ez_sanitize.setEnabled(False)
+                self.chk_ez_sanitize.setToolTip("Enabled by Simple paste mode")
+            else:
+                self.chk_ez_sanitize.setEnabled(True)
+                self.chk_ez_sanitize.setToolTip("")
+
+        _sync_ez_controls(self.chk_ez_simple.isChecked())
+        self.chk_ez_simple.toggled.connect(_sync_ez_controls)
+        lay.addWidget(grp_ez)
 
         grp_ytdlp = QGroupBox("yt-dlp")
         frm_ytdlp = QFormLayout(grp_ytdlp)
@@ -128,6 +168,7 @@ class SettingsPage(QWidget):
             self.cmb_ytdlp_branch,
             self.cmb_app_channel,
             self.cmb_app_behavior,
+            self.cmb_notifications,
         ):
             w.installEventFilter(self._nowheel)
 
@@ -144,12 +185,17 @@ class SettingsPage(QWidget):
             self.chk_auto_search_text,
             self.chk_ytdlp_auto,
             self.chk_auto_clear_success,
+            self.chk_auto_reset,
+            self.chk_ez_sanitize,
+            self.chk_ez_simple,
+            self.chk_ez_hide_adv,
         ):
             w.toggled.connect(self.changed.emit)
         self.spn_search_debounce.valueChanged.connect(self.changed.emit)
         self.cmb_ytdlp_branch.currentTextChanged.connect(self.changed.emit)
         self.cmb_app_channel.currentTextChanged.connect(self.changed.emit)
         self.cmb_app_behavior.currentIndexChanged.connect(self.changed.emit)
+        self.cmb_notifications.currentTextChanged.connect(self.changed.emit)
 
     def _confirm_reset_defaults(self):
         if (
@@ -189,3 +235,14 @@ class SettingsPage(QWidget):
         settings.app.auto_update = behavior == 2
         settings.app.check_on_launch = behavior == 1
         settings.app.channel = self.cmb_app_channel.currentText()
+        # General
+        settings.app.auto_reset_after_downloads = self.chk_auto_reset.isChecked()
+        settings.app.notifications_detail = self.cmb_notifications.currentText()
+        # EZ Mode
+        settings.ez.simple_paste_mode = self.chk_ez_simple.isChecked()
+        # Enforce sanitize when Simple paste is enabled
+        if settings.ez.simple_paste_mode:
+            settings.ez.sanitize_radio_links = True
+        else:
+            settings.ez.sanitize_radio_links = self.chk_ez_sanitize.isChecked()
+        settings.ez.hide_advanced_quality = self.chk_ez_hide_adv.isChecked()

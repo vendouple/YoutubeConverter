@@ -1,0 +1,46 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path -Path 'requirements.txt') { pip install -r requirements.txt }
+          pip install pyinstaller
+
+      - name: Build executable (include PNG data)
+        shell: pwsh
+        run: |
+          if (Test-Path -Path 'app.spec') {
+            pyinstaller --noconfirm app.spec
+          } else {
+            pyinstaller --noconfirm --onefile --name YoutubeConverter --add-data "YTConverterIcon.png;." main.py
+          }
+
+      - name: Ensure icon present in dist
+        shell: pwsh
+        run: |
+          if (Test-Path -Path 'YTConverterIcon.png') { Copy-Item -Path 'YTConverterIcon.png' -Destination 'dist' -Force }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoutubeConverter-win
+          path: dist/**

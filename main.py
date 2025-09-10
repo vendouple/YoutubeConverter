@@ -3,6 +3,7 @@ import sys
 import signal
 from typing import List, Dict
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -237,6 +238,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"YouTube Converter - {APP_VERSION}")
         self.setMinimumSize(1024, 640)
+        self.setWindowIcon(QIcon("YTConverterIcon.png"))
         self.settings_mgr = SettingsManager()
         self.settings: AppSettings = self.settings_mgr.load()
         self._migrate_settings()
@@ -250,6 +252,11 @@ class MainWindow(QMainWindow):
         self._deps_installing_ytdlp = False
         self._init_dialog: QProgressDialog | None = None
         self._init_ops = 0
+
+        self.ff_thread = None
+        self.yt_install_thread = None
+        self.yt_check_thread = None
+        self.app_up_thread = None
 
         self.sidebar = self._build_sidebar()
         self.stepper = Stepper()
@@ -275,6 +282,22 @@ class MainWindow(QMainWindow):
 
         # Signals wiring
         self._wire_signals()
+
+        try:
+            if hasattr(self.step1, "apply_ez_mode"):
+                self.step1.apply_ez_mode(self.settings)
+        except Exception:
+            pass
+        try:
+            if hasattr(self.step3, "apply_ez_mode"):
+                self.step3.apply_ez_mode(self.settings)
+        except Exception:
+            pass
+        try:
+            if hasattr(self.step4, "apply_ez_mode"):
+                self.step4.apply_ez_mode(self.settings)
+        except Exception:
+            pass
 
         # FFmpeg ensure
         self._ensure_ffmpeg()
@@ -366,15 +389,11 @@ class MainWindow(QMainWindow):
 
         # Step 2
         self.step3.qualityConfirmed.connect(self._advance_from_step3)
-        self.step3.backRequested.connect(
-            lambda: (self.flow_stack.setCurrentIndex(0), self.stepper.set_current(0))
-        )
+        self.step3.backRequested.connect(self._back_from_step2)
 
         # Step 3
         self.step4.allFinished.connect(self._on_downloads_finished)
-        self.step4.backRequested.connect(
-            lambda: (self.flow_stack.setCurrentIndex(1), self.stepper.set_current(1))
-        )
+        self.step4.backRequested.connect(self._back_from_step3)
 
         # Settings page signals (connect on inner widget)
         self.settings_page.changed.connect(self._settings_changed)
@@ -383,7 +402,6 @@ class MainWindow(QMainWindow):
         self.settings_page.checkAppCheckOnlyRequested.connect(
             lambda: self._check_app_updates(check_only=True, prompt_on_available=True)
         )
-        # NEW: optional hook if SettingsPage exposes a clearLogsRequested signal
         try:
             if hasattr(self.settings_page, "clearLogsRequested"):
                 self.settings_page.clearLogsRequested.connect(self._clear_all_logs)
@@ -410,6 +428,8 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._cancel_bg_fetcher()
+
         info = payload.get("info") or {}
         if not info:
             return
@@ -420,7 +440,7 @@ class MainWindow(QMainWindow):
                 return
             # Fetch full metadata before adding
             self.toast.show("Fetching video info...")
-            self._bg_fetcher = InfoFetcher(url)
+            self._bg_fetcher = InfoFetcher(url, parent=self)
 
             def _ok(meta):
                 # Build default selection (use user's defaults; quality best)
@@ -437,29 +457,38 @@ class MainWindow(QMainWindow):
 
             def _fail(err):
                 self._toast(f"Failed to fetch info: {err}")
+                self._bg_fetcher = None
 
             self._bg_fetcher.finished_ok.connect(_ok)
             self._bg_fetcher.finished_fail.connect(_fail)
+            self._bg_fetcher.finished.connect(
+                lambda: getattr(self._bg_fetcher, "deleteLater", lambda: None)()
+            )
             self._bg_fetcher.start()
             return
 
         url = payload.get("url") or info.get("webpage_url") or info.get("url")
         if url and not info.get("formats"):
             self._toast("Fetching video info...")
-            self._bg_fetcher = InfoFetcher(url)
+            self._bg_fetcher = InfoFetcher(url, parent=self)
 
             def _ok(meta):
                 self.step3.set_items([meta])
                 self.flow_stack.setCurrentIndex(1)
                 self.stepper.set_current(1)
+                self._bg_fetcher = None
 
             def _fail(_err):
                 self.step3.set_items([info])
                 self.flow_stack.setCurrentIndex(1)
                 self.stepper.set_current(1)
+                self._bg_fetcher = None
 
             self._bg_fetcher.finished_ok.connect(_ok)
             self._bg_fetcher.finished_fail.connect(_fail)
+            self._bg_fetcher.finished.connect(
+                lambda: getattr(self._bg_fetcher, "deleteLater", lambda: None)()
+            )
             self._bg_fetcher.start()
             return
 
@@ -501,14 +530,17 @@ class MainWindow(QMainWindow):
         self.stepper.set_current(2)
 
     def _on_downloads_finished(self):
-        # Always reset the app to a clean state after downloads
-        self.step1.reset()
-        try:
-            self.step4.reset()
-        except Exception:
-            pass
-        self.flow_stack.setCurrentIndex(0)
-        self.stepper.set_current(0)
+        # Always reset or hold per user preference
+        auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
+        if auto_reset:
+            self.step1.reset()
+            try:
+                self.step4.reset()
+            except Exception:
+                pass
+            self.flow_stack.setCurrentIndex(0)
+            self.stepper.set_current(0)
+        # Notify
         self._toast("Downloads finished.")
 
     def _pick_accent(self):
@@ -525,6 +557,22 @@ class MainWindow(QMainWindow):
         # Persist changes immediately using SettingsPage
         self.settings_page.apply_to(self.settings)
         self.settings_mgr.save(self.settings)
+        # Apply EZ Mode live if toggled
+        try:
+            if hasattr(self.step1, "apply_ez_mode"):
+                self.step1.apply_ez_mode(self.settings)
+        except Exception:
+            pass
+        try:
+            if hasattr(self.step3, "apply_ez_mode"):
+                self.step3.apply_ez_mode(self.settings)
+        except Exception:
+            pass
+        try:
+            if hasattr(self.step4, "apply_ez_mode"):
+                self.step4.apply_ez_mode(self.settings)
+        except Exception:
+            pass
 
     # NEW: clear all logs handler (used by SettingsPage "Clear All Logs" button)
     def _clear_all_logs(self):
@@ -623,7 +671,7 @@ class MainWindow(QMainWindow):
             pass
         self._begin_init("Installing yt-dlp...")
         self._toast("Installing yt-dlp...")
-        self.yt_thread = YtDlpUpdateWorker(
+        self.yt_install_thread = YtDlpUpdateWorker(
             branch=self.settings.ytdlp.branch, check_only=False
         )
 
@@ -649,22 +697,26 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        self.yt_thread.status.connect(_status)
-        self.yt_thread.finished.connect(_after)
-        self.yt_thread.start()
+        self.yt_install_thread.status.connect(_status)
+        self.yt_install_thread.finished.connect(_after)
+        self.yt_install_thread.start()
 
     def _check_ytdlp_updates(self, startup: bool = False):
         if startup:
             self._begin_init("Checking for yt-dlp updates...")
         self._toast("Checking for yt-dlp updates...")
-        self.yt_thread = YtDlpUpdateWorker(self.settings.ytdlp.branch, check_only=True)
-        self.yt_thread.status.connect(
+        self.yt_check_thread = YtDlpUpdateWorker(
+            self.settings.ytdlp.branch, check_only=True
+        )
+        self.yt_check_thread.status.connect(
             lambda s: (self._toast(s), self._update_init(s) if startup else None)
         )
         if self.settings.ytdlp.auto_update:
-            self.yt_thread.check_only = False
-        self.yt_thread.finished.connect(lambda: (self._end_init() if startup else None))
-        self.yt_thread.start()
+            self.yt_check_thread.check_only = False
+        self.yt_check_thread.finished.connect(
+            lambda: (self._end_init() if startup else None)
+        )
+        self.yt_check_thread.start()
 
     def _show_update_prompt(
         self, remote_ver: str, local_ver: str, changelog_md: str | None
@@ -751,22 +803,38 @@ class MainWindow(QMainWindow):
     ):
         do_update = (not check_only) and (self.settings.app.auto_update or force_update)
         channel = self.settings.app.channel
+        if do_update:
+            self._begin_init("Updating application...")
         self._toast("Checking app updates...")
         self.app_up_thread = AppUpdateWorker(APP_REPO, channel, APP_VERSION, do_update)
-        self.app_up_thread.status.connect(self._toast)
+        self.app_up_thread.status.connect(
+            lambda s: (self._toast(s), self._update_init(s) if do_update else None)
+        )
 
         if prompt_on_available:
 
             def _on_available_details(remote: str, local: str, body_md: str):
                 if self._show_update_prompt(remote, local, body_md or ""):
+                    # Inform user about UAC need before actually triggering it
+                    try:
+                        from PyQt6.QtWidgets import QMessageBox
+
+                        QMessageBox.information(
+                            self,
+                            "Administrator permission",
+                            "The app may request administrator permission to complete the update. Click Yes in the next prompt to continue.",
+                        )
+                    except Exception:
+                        pass
                     self._check_app_updates(
                         check_only=False, prompt_on_available=False, force_update=True
                     )
 
-            # Subscribe only to the detailed signal to avoid double prompts
             self.app_up_thread.availableDetails.connect(_on_available_details)
 
         def _after(updated: bool):
+            if do_update:
+                self._end_init()
             if updated:
                 # Apply pending update with elevation (if needed), then restart
                 root = _app_dir()
@@ -786,6 +854,16 @@ class MainWindow(QMainWindow):
                     try:
                         import subprocess
 
+                        try:
+                            from PyQt6.QtWidgets import QMessageBox
+
+                            QMessageBox.information(
+                                self,
+                                "Update in progress",
+                                "The app will close and restart after files are updated.",
+                            )
+                        except Exception:
+                            pass
                         subprocess.Popen(
                             ["powershell", "-NoProfile", "-Command", ps_cmd],
                             shell=False,
@@ -805,7 +883,6 @@ class MainWindow(QMainWindow):
                             subprocess.Popen([exe])
                         except Exception:
                             pass
-                    # Terminate current process to allow replacement
                     QApplication.quit()
                     return
 
@@ -813,21 +890,31 @@ class MainWindow(QMainWindow):
         self.app_up_thread.start()
 
     def _back_from_step2(self):
+        try:
+            if hasattr(self.step1, "cancel_pending"):
+                self.step1.cancel_pending()
+        except Exception:
+            pass
+        self._cancel_bg_fetcher()
         self.flow_stack.setCurrentIndex(0)
         self.stepper.set_current(0)
 
     def _back_from_step3(self):
+        try:
+            if hasattr(self.step1, "cancel_pending"):
+                self.step1.cancel_pending()
+        except Exception:
+            pass
+        self._cancel_bg_fetcher()
         is_playlist = len(self.stepper._labels) == 4
         self.flow_stack.setCurrentIndex(1 if is_playlist else 0)
         self.stepper.set_current(1 if is_playlist else 0)
 
-    def _back_from_step4(self):
-        self.flow_stack.setCurrentIndex(2)
-        is_playlist = len(self.stepper._labels) == 4
-        self.stepper.set_current(2 if is_playlist else 1)
-
     def _toast(self, msg: str):
         try:
+            detail = getattr(self.settings.app, "notifications_detail", "detailed")
+            if str(detail).lower() == "none":
+                return
             if self.isMinimized() or not self.isActiveWindow():
                 return
             self.toast.show(msg)
@@ -843,7 +930,61 @@ class MainWindow(QMainWindow):
                 setattr(ui, "auto_clear_on_success", True)
             if not hasattr(app, "check_on_launch"):
                 setattr(app, "check_on_launch", False)
+            if not hasattr(app, "auto_reset_after_downloads"):
+                setattr(app, "auto_reset_after_downloads", True)
+            if not hasattr(app, "notifications_detail"):
+                setattr(app, "notifications_detail", "detailed")
+            if not hasattr(self.settings, "ez"):
+                setattr(
+                    self.settings,
+                    "ez",
+                    type(
+                        "_Ez",
+                        (),
+                        {
+                            "sanitize_radio_links": True,
+                            "simple_paste_mode": False,
+                            "hide_advanced_quality": False,
+                        },
+                    )(),
+                )
+            else:
+                ez = getattr(self.settings, "ez")
+                if not hasattr(ez, "sanitize_radio_links"):
+                    setattr(ez, "sanitize_radio_links", True)
+                if not hasattr(ez, "simple_paste_mode"):
+                    setattr(ez, "simple_paste_mode", False)
+                if not hasattr(ez, "hide_advanced_quality"):
+                    setattr(ez, "hide_advanced_quality", False)
             self.settings_mgr.save(self.settings)
+        except Exception:
+            pass
+
+    def _cancel_bg_fetcher(self):
+        try:
+            if self._bg_fetcher is not None:
+                try:
+                    if hasattr(self._bg_fetcher, "requestInterruption"):
+                        self._bg_fetcher.requestInterruption()
+                except Exception:
+                    pass
+                try:
+                    self._bg_fetcher.finished_ok.disconnect()
+                except Exception:
+                    pass
+                try:
+                    self._bg_fetcher.finished_fail.disconnect()
+                except Exception:
+                    pass
+                try:
+                    self._bg_fetcher.finished.disconnect()
+                except Exception:
+                    pass
+                try:
+                    self._bg_fetcher.deleteLater()
+                except Exception:
+                    pass
+                self._bg_fetcher = None
         except Exception:
             pass
 

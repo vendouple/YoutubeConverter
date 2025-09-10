@@ -1,8 +1,10 @@
 import os
+import sys
+import subprocess
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -66,6 +68,8 @@ class DownloadItemWidget(QWidget):
 class Step4DownloadsWidget(QWidget):
     allFinished = pyqtSignal()
     backRequested = pyqtSignal()
+    # NEW: signal for manual completion when auto-reset is disabled
+    doneRequested = pyqtSignal()
 
     class _ThumbWorker(QThread):
         done = pyqtSignal(str, QPixmap)  # video_url, pixmap
@@ -100,6 +104,8 @@ class Step4DownloadsWidget(QWidget):
         self.downloader: Optional[Downloader] = None
         self._meta_fetchers: dict[int, InfoFetcher] = {}
         self._thumb_threads: List[Step4DownloadsWidget._ThumbWorker] = []  # NEW
+        self._downloading = False
+        self._file_map = {}  # row -> filepath
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -157,6 +163,42 @@ class Step4DownloadsWidget(QWidget):
         footer.addLayout(actions)
         lay.addLayout(footer)
 
+        # Add/prepare Done button (hidden by default)
+        try:
+            if not hasattr(self, "btn_done"):
+                self.btn_done = QPushButton("Done", self)
+                self.btn_done.setObjectName("PrimaryButton")
+                self.btn_done.setVisible(False)
+                try:
+                    # place on footer right if footer layout exists
+                    self.footerLayout.addWidget(self.btn_done)
+                except Exception:
+                    try:
+                        lay = QHBoxLayout()
+                        lay.addStretch(1)
+                        lay.addWidget(self.btn_done)
+                        self.layout().addLayout(lay)
+                    except Exception:
+                        pass
+                self.btn_done.clicked.connect(lambda: self.doneRequested.emit())
+        except Exception:
+            pass
+
+        # Hook double click on list if available
+        try:
+            if hasattr(self, "list"):
+                self.list.itemDoubleClicked.connect(self._open_item_file)
+        except Exception:
+            pass
+
+    # Allow MainWindow to push settings changes
+    def apply_ez_mode(self, settings=None):
+        try:
+            if settings is not None:
+                self.settings = settings
+        except Exception:
+            pass
+
     def configure(self, selection: Dict, settings: AppSettings):
         # Stop any prior background metadata fetchers safely
         self._cleanup_bg_metadata()  # NEW
@@ -171,6 +213,19 @@ class Step4DownloadsWidget(QWidget):
         self.fmt = selection.get("format", settings.defaults.format)
         self.quality = selection.get("quality", "best")
         self._populate()
+
+    # Call when downloads are about to start
+    def _on_downloads_started(self):
+        self._downloading = True
+        try:
+            if hasattr(self, "btn_back"):
+                self.btn_back.setEnabled(False)
+        except Exception:
+            pass
+        try:
+            self.btn_done.setVisible(False)
+        except Exception:
+            pass
 
     def _populate(self):
         self.list.clear()
@@ -343,6 +398,7 @@ class Step4DownloadsWidget(QWidget):
         self.downloader.itemStatus.connect(self._on_item_status)
         self.downloader.itemProgress.connect(self._on_item_progress)
         self.downloader.itemThumb.connect(self._on_item_thumb)
+        self.downloader.itemFileReady.connect(self._on_item_file_ready)
         self.downloader.finished_all.connect(self._on_all_finished)
         self.btn_start.setText("Pause")
         self.btn_start.setEnabled(True)
@@ -421,24 +477,70 @@ class Step4DownloadsWidget(QWidget):
                     )
                 )
 
+    # Connect this to Downloader.itemFileReady
+    def _on_item_file_ready(self, row: int, path: str):
+        self._file_map[row] = path
+        try:
+            # Add an icon to indicate openable
+            if hasattr(self, "list") and 0 <= row < self.list.count():
+                it: QListWidgetItem = self.list.item(row)
+                # Keep existing icon if set; otherwise set a generic one if available
+                if it and it.icon().isNull():
+                    try:
+                        it.setIcon(QIcon.fromTheme("document-open"))
+                    except Exception:
+                        pass
+                it.setData(
+                    Qt.ItemDataRole.UserRole,
+                    {**(it.data(Qt.ItemDataRole.UserRole) or {}), "filepath": path},
+                )
+        except Exception:
+            pass
+
+    def _open_item_file(self, item: QListWidgetItem):
+        try:
+            data = item.data(Qt.ItemDataRole.UserRole) or {}
+            path = data.get("filepath")
+            if not path or not os.path.exists(path):
+                return
+            if sys.platform.startswith("win"):
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
     def _get_widget(self, idx: int) -> Optional[DownloadItemWidget]:
         it = self.list.item(idx)
         if not it:
             return None
         return self.list.itemWidget(it)
 
+    # Call when user presses Stop (ensure to re-enable Back only after stopped)
+    def _on_downloads_stopped(self):
+        self._downloading = False
+        try:
+            if hasattr(self, "btn_back"):
+                self.btn_back.setEnabled(True)
+        except Exception:
+            pass
+
+    # Call when all finished
     def _on_all_finished(self):
-        self.btn_done.setVisible(True)
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setVisible(False)
-        self.btn_stop.setEnabled(False)
-        self.btn_start.setText("Start")
-        self.downloader = None
-        if self.settings.ui.reset_after_downloads:
-            self.btn_done.setText("Reset")
-        else:
-            self.btn_done.setText("Done")
-        self.allFinished.emit()
+        self._downloading = False
+        try:
+            if hasattr(self, "btn_back"):
+                self.btn_back.setEnabled(True)
+        except Exception:
+            pass
+        # Show Done if auto reset is disabled
+        try:
+            auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
+            self.btn_done.setVisible(not auto_reset)
+        except Exception:
+            pass
 
     def _done_clicked(self):
         # Parent will decide behavior, here we just reset the list UI

@@ -151,8 +151,8 @@ class InfoFetcher(QThread):
     finished_ok = pyqtSignal(dict)
     finished_fail = pyqtSignal(str)
 
-    def __init__(self, url: str, timeout_sec: int = 60):
-        super().__init__()
+    def __init__(self, url: str, timeout_sec: int = 60, parent=None):
+        super().__init__(parent)
         self.url = url
         self.timeout_sec = timeout_sec
 
@@ -250,6 +250,8 @@ class Downloader(QThread):
     itemStatus = pyqtSignal(int, str)
     itemThumb = pyqtSignal(int, bytes)
     finished_all = pyqtSignal()
+    # NEW: announce final file for item when available
+    itemFileReady = pyqtSignal(int, str)
 
     def __init__(
         self,
@@ -600,6 +602,12 @@ class Downloader(QThread):
                     idx, url, kind, fmt, qual, sb_enabled, sb_cats
                 )
                 if ok:
+                    try:
+                        fp = self._resolve_output_file(idx, kind, fmt)
+                        if fp:
+                            self.itemFileReady.emit(idx, fp)
+                    except Exception:
+                        pass
                     continue  # success; next item
 
             # Fallback to Python API (keep SB enabled here too)
@@ -622,6 +630,12 @@ class Downloader(QThread):
                 if not self._stop:
                     self.itemProgress.emit(idx, 100.0, 0.0, 0)
                     self.itemStatus.emit(idx, "Done")
+                    try:
+                        fp = self._resolve_output_file(idx, kind, fmt)
+                        if fp:
+                            self.itemFileReady.emit(idx, fp)
+                    except Exception:
+                        pass
             except Exception as e:
                 if self._stop:
                     self.itemStatus.emit(idx, "Stopped")

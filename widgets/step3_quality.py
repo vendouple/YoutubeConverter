@@ -335,6 +335,11 @@ class Step3QualityWidget(QWidget):
         self._nowheel = _NoWheelFilter(self)
         for w in (self.cmb_format, self.cmb_quality):
             w.installEventFilter(self._nowheel)
+        # Apply EZ Mode tweaks on construction
+        try:
+            self.apply_ez_mode(self.settings)
+        except Exception:
+            pass
 
     # NEW: valid formats by kind
     def _formats_for_kind(self, kind: str) -> List[str]:
@@ -706,4 +711,17 @@ class Step3QualityWidget(QWidget):
         lay.addWidget(lab)
         lay.addWidget(w, 1)
         return row
-        return row
+
+    def apply_ez_mode(self, settings: AppSettings | None = None):
+        try:
+            if settings is not None:
+                self.settings = settings
+            ez = getattr(self.settings, "ez", None)
+            hide_adv = (
+                bool(getattr(ez, "hide_advanced_quality", False)) if ez else False
+            )
+            # Hide the Advanced toggle and panel entirely if requested
+            self.btn_adv.setVisible(not hide_adv)
+            self.adv_panel.setVisible(False if hide_adv else self.btn_adv.isChecked())
+        except Exception:
+            pass

@@ -62,6 +62,13 @@ class AppUpdateSettings:
 
 
 @dataclass
+class EZModeSettings:
+    sanitize_radio_links: bool = True
+    simple_paste_mode: bool = False
+    hide_advanced_quality: bool = False
+
+
+@dataclass
 class AppSettings:
     last_download_dir: str = field(
         default_factory=lambda: os.path.expanduser("~/Downloads")
@@ -70,6 +77,8 @@ class AppSettings:
     defaults: DefaultsSettings = field(default_factory=DefaultsSettings)
     ytdlp: YtDlpSettings = field(default_factory=YtDlpSettings)
     app: AppUpdateSettings = field(default_factory=AppUpdateSettings)
+    # NEW: EZ Mode
+    ez: EZModeSettings = field(default_factory=EZModeSettings)
 
 
 class SettingsManager:
@@ -105,6 +114,7 @@ class SettingsManager:
             defaults = DefaultsSettings(**data.get("defaults", {}))
             ytdlp = YtDlpSettings(**data.get("ytdlp", {}))
             app = AppUpdateSettings(**data.get("app", {}))
+            ez = EZModeSettings(**(data.get("ez", {}) or {}))
             return AppSettings(
                 last_download_dir=data.get(
                     "last_download_dir", AppSettings().last_download_dir
@@ -113,6 +123,7 @@ class SettingsManager:
                 defaults=defaults,
                 ytdlp=ytdlp,
                 app=app,
+                ez=ez,
             )
         except Exception:
             return AppSettings()
