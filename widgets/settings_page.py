@@ -225,7 +225,7 @@ class SettingsPage(QWidget):
         self.cmb_app_channel.addItems(["Release", "Nightly"])
         channel = (getattr(settings.app, "channel", "release") or "release").lower()
         self.cmb_app_channel.setCurrentIndex(
-            {"release": 0, "prerelease": 1, "nightly": 2}.get(channel, 0)
+            {"release": 0, "nightly": 1}.get(channel, 0)
         )
         row_a_channel.addWidget(self.cmb_app_channel, 1)
         a_lay.addLayout(row_a_channel)
