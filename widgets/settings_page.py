@@ -409,7 +409,7 @@ class SettingsPage(QWidget):
         )
         settings.ytdlp.branch = self_branch
         # App channel mapping
-        self_channel = {0: "release", 1: "prerelease", 2: "nightly"}.get(
+        self_channel = {0: "release", 1: "nightly"}.get(
             self.cmb_app_channel.currentIndex(), "release"
         )
         settings.app.channel = self_channel
