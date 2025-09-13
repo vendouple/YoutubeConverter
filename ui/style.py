@@ -33,8 +33,8 @@ class StyleManager:
         return f"""
 /* Base */
 QWidget {{
-    background: #1e1f22;
-    color: #e6e6e6;
+    background: #1c1d20; /* slightly darker for contrast */
+    color: #f0f0f0;      /* lighter text for improved contrast */
     font-size: 13px;
 }}
 QFrame#Sidebar {{
@@ -79,8 +79,8 @@ QListView::icon, QListWidget::icon {{
 
 /* Buttons */
 QPushButton {{
-    background: #2a2b30;
-    border: 1px solid #33343a;
+    background: #2c2d32;
+    border: 1px solid #40424a;
     border-radius: 8px;
     padding: 8px 12px;
 }}
@@ -128,7 +128,7 @@ QPushButton:focus, QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QCheckBox:
     outline: 0; border: 1px solid #34353b;
 }}
 QLineEdit, QComboBox, QTextEdit {{
-    background: #222327; border: 1px solid #34353b; border-radius: 8px; padding: 6px 8px;
+    background: #212226; border: 1px solid #3d3f45; border-radius: 8px; padding: 6px 8px;
 }}
 
 /* Win11-like CheckBox (check mark box) */

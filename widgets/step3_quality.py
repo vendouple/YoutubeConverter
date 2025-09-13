@@ -104,7 +104,7 @@ class Step3QualityWidget(QWidget):
         self.preview.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         content.addWidget(self.preview, 2)
 
-        # NEW: accent vertical separator between list and options
+        # Accent vertical separator between list and options
         vsep = QFrame()
         vsep.setObjectName("AccentVLine")
         vsep.setFrameShape(QFrame.Shape.VLine)
@@ -325,7 +325,7 @@ class Step3QualityWidget(QWidget):
         self._refetch_timer.setSingleShot(True)
         self._refetch_timer.timeout.connect(self._start_refetch_missing)
 
-        # NEW: block mouse wheel on comboboxes to avoid accidental changes
+        # Block mouse wheel on comboboxes to avoid accidental changes
         class _NoWheelFilter(QObject):
             def eventFilter(self, obj, event):
                 if event.type() == QEvent.Type.Wheel:
@@ -341,7 +341,7 @@ class Step3QualityWidget(QWidget):
         except Exception:
             pass
 
-    # NEW: valid formats by kind
+    # Valid formats by kind
     def _formats_for_kind(self, kind: str) -> List[str]:
         return (
             ["mp3", "m4a", "flac", "wav", "opus"]
@@ -349,18 +349,18 @@ class Step3QualityWidget(QWidget):
             else ["mp4", "mkv", "webm"]
         )
 
-    # NEW: default format by kind
+    # Default format by kind
     def _default_format_for_kind(self, kind: str) -> str:
         return "mp3" if kind == "audio" else "mp4"
 
-    # NEW: get current selection context (global or current item)
+    # Get current selection context (global or current item)
     def _current_context_sel(self) -> Dict[str, str]:
         if self._apply_all or self.preview.currentRow() < 0:
             return dict(self._global_sel)
         idx = self.preview.currentRow()
         return dict(self._per_item_sel.get(idx, self._global_sel))
 
-    # CHANGED: repopulate formats for current kind and pick a valid selection
+    # Repopulate formats for current kind and pick a valid selection
     def _apply_kind_defaults(self):
         kind = "audio" if self.btn_audio.isChecked() else "video"
         formats = self._formats_for_kind(kind)

@@ -5,8 +5,29 @@ import requests
 import zipfile
 import time
 import logging
-from typing import Optional
-from PyQt6.QtCore import QThread, pyqtSignal
+from enum import Enum
+from typing import Optional, Callable
+from PyQt6.QtCore import QThread, pyqtSignal, QObject
+
+try:
+    from core.models import UpdateSchedule, UpdateCadence
+except Exception:
+    # Lightweight fallback definitions if models not yet imported (tests will still drive real path)
+    from enum import Enum
+    from dataclasses import dataclass
+    from typing import Optional as _Opt
+
+    class UpdateCadence(str, Enum):
+        OFF = "off"
+        LAUNCH = "launch"
+        DAILY = "daily"
+        WEEKLY = "weekly"
+        MONTHLY = "monthly"
+
+    @dataclass
+    class UpdateSchedule:
+        cadence: UpdateCadence = UpdateCadence.OFF
+        last_check_ts: _Opt[float] = None
 
 
 if getattr(sys, "frozen", False):
@@ -399,59 +420,164 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger("update_debugger")
 
-    def status_callback(message):
-        logger.info(message)
-        print(message)
+# ---- Schedule helpers (contract tests expect these) ----
 
-    def available_callback(remote_ver, local_ver):
-        logger.info(f"Update available: {local_ver} -> {remote_ver}")
-        print(f"Update available: {local_ver} -> {remote_ver}")
+_CADENCE_SECONDS = {
+    UpdateCadence.DAILY: 60 * 60 * 24,
+    UpdateCadence.WEEKLY: 60 * 60 * 24 * 7,
+    UpdateCadence.MONTHLY: 60 * 60 * 24 * 30,  # Simplified month length
+}
 
-    # Test YT-DLP updater
-    logger.info("Testing YT-DLP updater...")
-    ytdlp_worker = YtDlpUpdateWorker(branch="stable", check_only=True)
-    ytdlp_worker.status.connect(status_callback)
-    ytdlp_worker.start()
-    ytdlp_worker.wait()
-    logger.info("Testing App update check...")
-    app_worker = AppUpdateWorker(
-        repo="noneeeeeeeeeee/YoutubeConverter",
-        channel="release",
-        current_version="0.0.0",
-        do_update=False,
-    )
-    app_worker.status.connect(status_callback)
-    app_worker.available.connect(available_callback)
-    app_worker.start()
-    app_worker.wait()
-    # Test if we're hitting rate limits
-    logger.info("Testing GitHub API rate limit...")
-    try:
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "YoutubeConverter-Updater",
-        }
-        r = requests.get(
-            "https://api.github.com/rate_limit", headers=headers, timeout=10
+
+def next_schedule_due(
+    s: UpdateSchedule, now: Optional[float] = None
+) -> Optional[float]:
+    """Return epoch seconds when the schedule will next be due or None if never.
+
+    LAUNCH cadence is treated as always due (returned now) to simplify call sites.
+    OFF cadence returns None.
+    """
+    import time as _time
+
+    now = now or _time.time()
+    if not s or s.cadence == UpdateCadence.OFF:
+        return None
+    if s.cadence == UpdateCadence.LAUNCH:
+        return now
+    base = s.last_check_ts or 0.0
+    interval = _CADENCE_SECONDS.get(s.cadence)
+    if not interval:
+        return None
+    return base + interval
+
+
+def is_schedule_due(s: UpdateSchedule, now: Optional[float] = None) -> bool:
+    """Return True if schedule indicates a check should run at 'now'."""
+    import time as _time
+
+    now = now or _time.time()
+    if not s:
+        return False
+    if s.cadence == UpdateCadence.OFF:
+        return False
+    if s.cadence == UpdateCadence.LAUNCH:
+        return True
+    target = next_schedule_due(s, now)
+    if target is None:
+        return False
+    return now >= target - 1e-6  # tolerate float rounding
+
+
+# ---------------- Update Flow State Machine (T030) -----------------
+
+
+class UpdateState(str, Enum):
+    PRE_PROMPT = "pre_prompt"
+    CHECKING = "checking"
+    DOWNLOADING = "downloading"
+    VERIFYING = "verifying"
+    APPLYING = "applying"
+    RESTART_NEEDED = "restart_needed"
+    ERROR = "error"
+    CANCELED = "canceled"
+
+
+class UpdateFlowManager(QObject):
+    """High-level orchestrator wrapping AppUpdateWorker with coarse states.
+
+    Future expansion: integrate code-sign verification & differential updates.
+    """
+
+    stateChanged = pyqtSignal(str)
+    message = pyqtSignal(str)
+    error = pyqtSignal(str)
+    restartRequired = pyqtSignal()
+
+    def __init__(self, repo: str, channel: str, current_version: str):
+        super().__init__()
+        self.repo = repo
+        self.channel = channel
+        self.current_version = current_version
+        self._state: UpdateState = UpdateState.PRE_PROMPT
+        self._worker: Optional[AppUpdateWorker] = None
+        self._canceled = False
+
+    # ---- State helpers ----
+    def _set_state(self, s: UpdateState):
+        if s != self._state:
+            self._state = s
+            self.stateChanged.emit(s.value)
+
+    def state(self) -> UpdateState:
+        return self._state
+
+    # ---- Public API ----
+    def start(self, do_update: bool):
+        if self._worker and self._worker.isRunning():
+            return
+        self._canceled = False
+        self._set_state(UpdateState.CHECKING)
+        self._worker = AppUpdateWorker(
+            self.repo, self.channel, self.current_version, do_update
         )
-        r.raise_for_status()
-        rate_info = r.json()
-        core_limit = rate_info.get("resources", {}).get("core", {})
-        remaining = core_limit.get("remaining", 0)
-        reset_time = core_limit.get("reset", 0)
-        reset_datetime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(reset_time))
-        logger.info(
-            f"GitHub API Rate Limit: {remaining} requests remaining, resets at {reset_datetime}"
+        self._worker.status.connect(self._on_status)
+        self._worker.updated.connect(self._on_updated)
+        self._worker.availableDetails.connect(self._on_available)
+        self._worker.start()
+
+    def cancel(self):
+        if self._worker and self._worker.isRunning():
+            try:
+                self._canceled = True
+                # QThread has no cooperative cancel path here; terminate as last resort
+                self._worker.terminate()
+            except Exception:
+                pass
+        self._set_state(UpdateState.CANCELED)
+
+    # ---- Internal signal handlers ----
+    def _on_status(self, text: str):
+        if self._canceled:
+            return
+        low = (text or "").lower()
+        if "downloading" in low and self._state == UpdateState.CHECKING:
+            self._set_state(UpdateState.DOWNLOADING)
+        elif "preparing" in low and self._state in (
+            UpdateState.DOWNLOADING,
+            UpdateState.CHECKING,
+        ):
+            self._set_state(UpdateState.VERIFYING)
+        elif "update ready" in low:
+            self._set_state(UpdateState.RESTART_NEEDED)
+            self.restartRequired.emit()
+        elif "failed" in low or "error" in low:
+            self._set_state(UpdateState.ERROR)
+            self.error.emit(text)
+        self.message.emit(text)
+
+    def _on_updated(self, changed: bool):
+        if self._canceled:
+            return
+        if changed and self._state not in (
+            UpdateState.RESTART_NEEDED,
+            UpdateState.ERROR,
+        ):
+            self._set_state(UpdateState.RESTART_NEEDED)
+            self.restartRequired.emit()
+        elif not changed and self._state == UpdateState.CHECKING:
+            # No update available -> remain or finalize
+            self._set_state(UpdateState.CHECKING)
+
+    def _on_available(self, remote_ver: str, local_ver: str, body_md: str):
+        # Provide informational message hook; do not change state
+        self.message.emit(
+            f"Update available {local_ver or '?'} -> {remote_ver or '?'}".strip()
         )
-        print(
-            f"GitHub API Rate Limit: {remaining} requests remaining, resets at {reset_datetime}"
-        )
-        if remaining < 10:
-            logger.warning("GitHub API rate limit is low!")
-            print("WARNING: GitHub API rate limit is low!")
-    except Exception as e:
-        logger.error(f"Failed to check rate limit: {e}")
-        print(f"ERROR: Failed to check rate limit: {e}")
-    except Exception as e:
-        logger.error(f"Failed to check rate limit: {e}")
-        print(f"ERROR: Failed to check rate limit: {e}")
+
+    # Convenience: run a single-step check without download
+    def check_only(self):
+        self.start(do_update=False)
+
+    # Convenience: run auto update (download/apply)
+    def auto_update(self):
+        self.start(do_update=True)

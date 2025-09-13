@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QCheckBox,
     QProgressBar,
-    QFrame,  # NEW
+    QFrame,
 )
 from PyQt6.QtGui import QIcon, QPixmap, QColor, QImage
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
@@ -29,15 +29,14 @@ ICON_PIXMAP_ROLE = int(Qt.ItemDataRole.UserRole) + 1  # store original pixmap
 
 
 class Step1LinkWidget(QWidget):
-    # Emits full info dict for a single immediate advance (when not multiple) for backward compat
+    # Signals consumed by MainWindow wiring
     urlDetected = pyqtSignal(dict)
     requestAdvance = pyqtSignal(dict)
-    # New: emit full list of selected info dicts
     selectionConfirmed = pyqtSignal(list)
 
     # Small worker to fetch a single thumbnail without blocking UI
     class _ThumbWorker(QThread):
-        # CHANGED: emit bytes instead of QPixmap to keep GUI ops in UI thread
+        # Emit bytes instead of QPixmap to keep GUI ops in UI thread
         done = pyqtSignal(int, bytes, str)  # row, image_bytes, url
 
         def __init__(self, row: int, url: str, parent=None):
@@ -64,156 +63,177 @@ class Step1LinkWidget(QWidget):
             except Exception:
                 pass
 
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings | None = None):
         super().__init__()
-        self.settings = settings
-        self.fetcher = None
-        self._fetchers: set[InfoFetcher] = set()  # NEW: track fetchers
-        self.selected: List[Dict] = []
-        self._bg_fetchers = {}
-        self._active_req_id = 0
-        self._thumb_threads: List[Step1LinkWidget._ThumbWorker] = []
-        self._thumb_max = 3
-        self._thumb_queue = deque()
-        self._thumb_active: set = set()
-        self._thumb_cache = {}
-        self._thumb_pending: set = set()
-
-        self._queue = deque()
-        self._queued_search: str | None = None
-
-        self._confirm_inflight = False
-        self._confirm_fetchers: dict[int, InfoFetcher] = {}
-        self._confirm_total = 0
-        self._confirm_done = 0
-
-        # Setup UI
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(6)
-
-        # Top row: input + multi toggle + Paste
-        top = QHBoxLayout()
-        self.txt = QLineEdit()
-        self.txt.setPlaceholderText(
-            "Paste a YouTube URL or type to search, then press Enter…"
-        )
-        # Intercept Ctrl+V to use the same fast-paste logic
-        self.txt.installEventFilter(self)
-        self.chk_multi = QCheckBox("Add multiple")
-        self.chk_multi.setObjectName("ButtonLike")
-        self.chk_multi.setChecked(False)
-        # prevent dotted focus on key navigation
-        self.chk_multi.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_paste = QPushButton("Paste")
-        top.addWidget(self.txt, 1)
-        top.addWidget(self.chk_multi)
-        top.addWidget(self.btn_paste)
-        lay.addLayout(top)
-
-        # NEW: Thin YouTube-like loading bar below the top row
-        self.loading_bar = QProgressBar()
-        self.loading_bar.setTextVisible(False)
-        self.loading_bar.setFixedHeight(3)
-        self.loading_bar.setRange(0, 0)
-        self.loading_bar.setVisible(False)
-        self.loading_bar.setStyleSheet(
-            f"QProgressBar{{border:0;background:transparent;}}"
-            f"QProgressBar::chunk{{background-color:{self.settings.ui.accent_color_hex};}}"
-        )
-        lay.addWidget(self.loading_bar)
-
-        # Status row (keep only the label; remove spinner)
-        status_row = QHBoxLayout()
-        self.lbl_status = QLabel("")
-        self.lbl_status.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        status_row.addWidget(self.lbl_status, 1)
-        lay.addLayout(status_row)
-
-        # Tabs
-        self.tabs = QTabWidget()
-        self.tab_search = QWidget()
-        self.tab_selected = QWidget()
-        self.tab_playlist = QWidget()
-        self.tabs.addTab(self.tab_search, "Searched Videos")
-        self.tabs.addTab(self.tab_selected, "Selected Videos")
-        self.tabs.addTab(self.tab_playlist, "Playlist Videos")
-
-        lay.addWidget(self.tabs, 1)
-        self.idx_search, self.idx_selected, self.idx_playlist = 0, 1, 2
-        self.tabs.setTabVisible(self.idx_selected, False)
-        self.tabs.setTabVisible(self.idx_playlist, False)
-
-        ts_lay = QVBoxLayout(self.tab_search)
-        ts_lay.setContentsMargins(0, 0, 0, 0)
-        self.results = QListWidget()
-        self.results.setIconSize(QSize(96, 54))
-        self.results.setFrameShape(QFrame.Shape.NoFrame)
-        self.results.setSpacing(3)
-        self.results.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        ts_lay.addWidget(self.results, 1)
-
-        # Selected tab content
-        sel_lay = QVBoxLayout(self.tab_selected)
-        sel_lay.setContentsMargins(0, 0, 0, 0)
-        self.selected_list = QListWidget()
-        self.selected_list.setIconSize(QSize(96, 54))
-        self.selected_list.setFrameShape(QFrame.Shape.NoFrame)
-        self.selected_list.setSpacing(3)
-        self.selected_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        sel_lay.addWidget(self.selected_list, 1)
-
-        # Playlist tab content
-        pl_lay = QVBoxLayout(self.tab_playlist)
-        pl_lay.setContentsMargins(0, 0, 0, 0)
-        self.chk_pl_select_all = QCheckBox("Select all")
-        self.chk_pl_select_all.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.chk_pl_select_all.toggled.connect(self._on_pl_select_all_toggled)
-        pl_lay.addWidget(self.chk_pl_select_all, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.playlist_list = QListWidget()
-        self.playlist_list.setIconSize(QSize(96, 54))
-        self.playlist_list.setFrameShape(QFrame.Shape.NoFrame)
-        self.playlist_list.setSpacing(3)
-        self.playlist_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        pl_lay.addWidget(self.playlist_list, 1)
-        # NEW: trigger lazy thumb loading on viewport resize/show
         try:
-            self.playlist_list.viewport().installEventFilter(self)
-        except Exception:
-            pass
+            if settings is None:
+                try:
+                    from core.settings import SettingsManager
 
-        # Bottom row with Next button
-        bottom = QHBoxLayout()
-        bottom.addStretch(1)
-        self.btn_next = QPushButton("Next")
-        self.btn_next.setVisible(False)
-        bottom.addWidget(self.btn_next)
-        lay.addLayout(bottom)
+                    settings = SettingsManager().load()
+                except Exception:
+                    pass
+            self.settings = settings  # type: ignore[assignment]
+            # State
+            self.fetcher = None
+            self._fetchers: set[InfoFetcher] = set()
+            self.selected: List[Dict] = []
+            self._bg_fetchers = {}
+            self._active_req_id = 0
+            # Thumbnails
+            self._thumb_threads: List[Step1LinkWidget._ThumbWorker] = []
+            self._thumb_max = 3
+            self._thumb_queue = deque()
+            self._thumb_active: set = set()
+            self._thumb_cache = {}
+            self._thumb_pending: set = set()
+            # Queue
+            self._queue = deque()
+            self._queued_search: str | None = None
+            # Confirm
+            self._confirm_inflight = False
+            self._confirm_fetchers: dict[int, InfoFetcher] = {}
+            self._confirm_total = 0
+            self._confirm_done = 0
 
-        # Connect signals
-        self.btn_paste.clicked.connect(self._paste)
-        self.txt.returnPressed.connect(self._enter_pressed)
-        self.txt.textChanged.connect(self._on_text_changed)
-        self.chk_multi.toggled.connect(self._on_multi_toggled)
-        self.results.itemClicked.connect(self._toggle_from_results)
-        self.selected_list.itemClicked.connect(self._remove_from_selected_prompt)
-        self.playlist_list.itemClicked.connect(self._toggle_from_playlist)
-        self.btn_next.clicked.connect(self._confirm_selection)
+            # Setup UI
+            lay = QVBoxLayout(self)
+            lay.setContentsMargins(8, 8, 8, 8)
+            lay.setSpacing(6)
 
-        # Debounced search timer
-        self.search_timer = QTimer(self)
-        self.search_timer.setSingleShot(True)
-        self.search_timer.timeout.connect(self._do_debounced_search)
+            # Top row: input + multi toggle + Paste
+            top = QHBoxLayout()
+            self.txt = QLineEdit()
+            self.txt.setPlaceholderText(
+                "Paste a YouTube URL or type to search, then press Enter…"
+            )
+            # Intercept Ctrl+V to use the same fast-paste logic
+            self.txt.installEventFilter(self)
+            self.chk_multi = QCheckBox("Add multiple")
+            self.chk_multi.setObjectName("ButtonLike")
+            self.chk_multi.setChecked(False)
+            # prevent dotted focus on key navigation
+            self.chk_multi.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.btn_paste = QPushButton("Paste")
+            top.addWidget(self.txt, 1)
+            top.addWidget(self.chk_multi)
+            top.addWidget(self.btn_paste)
+            lay.addLayout(top)
 
-        # Ensure the Select-all toggle visibility matches multi-select state
-        self.chk_pl_select_all.setVisible(self.chk_multi.isChecked())
+            # Thin YouTube-like loading bar below the top row
+            self.loading_bar = QProgressBar()
+            self.loading_bar.setTextVisible(False)
+            self.loading_bar.setFixedHeight(3)
+            self.loading_bar.setRange(0, 0)
+            self.loading_bar.setVisible(False)
+            self.loading_bar.setStyleSheet(
+                f"QProgressBar{{border:0;background:transparent;}}"
+                f"QProgressBar::chunk{{background-color:{self.settings.ui.accent_color_hex};}}"
+            )
+            lay.addWidget(self.loading_bar)
 
-        # Apply EZ mode at construction if available
-        try:
-            self.apply_ez_mode(self.settings)
+            # Status row (keep only the label; remove spinner)
+            status_row = QHBoxLayout()
+            self.lbl_status = QLabel("")
+            self.lbl_status.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            status_row.addWidget(self.lbl_status, 1)
+            lay.addLayout(status_row)
+
+            # Tabs
+            self.tabs = QTabWidget()
+            self.tab_search = QWidget()
+            self.tab_selected = QWidget()
+            self.tab_playlist = QWidget()
+            self.tabs.addTab(self.tab_search, "Searched Videos")
+            self.tabs.addTab(self.tab_selected, "Selected Videos")
+            self.tabs.addTab(self.tab_playlist, "Playlist Videos")
+
+            lay.addWidget(self.tabs, 1)
+            self.idx_search, self.idx_selected, self.idx_playlist = 0, 1, 2
+            self.tabs.setTabVisible(self.idx_selected, False)
+            self.tabs.setTabVisible(self.idx_playlist, False)
+
+            ts_lay = QVBoxLayout(self.tab_search)
+            ts_lay.setContentsMargins(0, 0, 0, 0)
+            self.results = QListWidget()
+            self.results.setIconSize(QSize(96, 54))
+            self.results.setFrameShape(QFrame.Shape.NoFrame)
+            self.results.setSpacing(3)
+            self.results.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+            ts_lay.addWidget(self.results, 1)
+
+            # Selected tab content
+            sel_lay = QVBoxLayout(self.tab_selected)
+            sel_lay.setContentsMargins(0, 0, 0, 0)
+            self.selected_list = QListWidget()
+            self.selected_list.setIconSize(QSize(96, 54))
+            self.selected_list.setFrameShape(QFrame.Shape.NoFrame)
+            self.selected_list.setSpacing(3)
+            self.selected_list.setVerticalScrollMode(
+                QListWidget.ScrollMode.ScrollPerPixel
+            )
+            sel_lay.addWidget(self.selected_list, 1)
+
+            # Playlist tab content
+            pl_lay = QVBoxLayout(self.tab_playlist)
+            pl_lay.setContentsMargins(0, 0, 0, 0)
+            self.chk_pl_select_all = QCheckBox("Select all")
+            self.chk_pl_select_all.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.chk_pl_select_all.toggled.connect(self._on_pl_select_all_toggled)
+            pl_lay.addWidget(self.chk_pl_select_all, 0, Qt.AlignmentFlag.AlignLeft)
+
+            self.playlist_list = QListWidget()
+            self.playlist_list.setIconSize(QSize(96, 54))
+            self.playlist_list.setFrameShape(QFrame.Shape.NoFrame)
+            self.playlist_list.setSpacing(3)
+            self.playlist_list.setVerticalScrollMode(
+                QListWidget.ScrollMode.ScrollPerPixel
+            )
+            pl_lay.addWidget(self.playlist_list, 1)
+            # Trigger lazy thumb loading on viewport resize/show
+            try:
+                self.playlist_list.viewport().installEventFilter(self)
+            except Exception:
+                pass
+
+            # Bottom row with Next button
+            bottom = QHBoxLayout()
+            bottom.addStretch(1)
+            self.btn_next = QPushButton("Next")
+            self.btn_next.setVisible(False)
+            bottom.addWidget(self.btn_next)
+            lay.addLayout(bottom)
+
+            # Connect signals
+            self.btn_paste.clicked.connect(self._paste)
+            self.txt.returnPressed.connect(self._enter_pressed)
+            self.txt.textChanged.connect(self._on_text_changed)
+            self.chk_multi.toggled.connect(self._on_multi_toggled)
+            self.results.itemClicked.connect(self._toggle_from_results)
+            self.selected_list.itemClicked.connect(self._remove_from_selected_prompt)
+            self.playlist_list.itemClicked.connect(self._toggle_from_playlist)
+            self.btn_next.clicked.connect(self._confirm_selection)
+
+            # Debounced search timer
+            self.search_timer = QTimer(self)
+            self.search_timer.setSingleShot(True)
+            self.search_timer.timeout.connect(self._do_debounced_search)
+
+            # Ensure the Select-all toggle visibility matches multi-select state
+            self.chk_pl_select_all.setVisible(self.chk_multi.isChecked())
+
+            # Apply EZ mode at construction if available
+            try:
+                self.apply_ez_mode(self.settings)
+            except Exception:
+                pass
+            # Enable drag & drop globally (advanced mode logic inside handlers)
+            try:
+                self.setAcceptDrops(True)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -289,7 +309,7 @@ class Step1LinkWidget(QWidget):
                     self._handle_paste_from_clipboard()
                     return True
         else:
-            # NEW: react to playlist viewport resize/show to (re)load visible thumbs
+            # React to playlist viewport resize/show to (re)load visible thumbs
             try:
                 from PyQt6.QtCore import QEvent
 
@@ -324,11 +344,24 @@ class Step1LinkWidget(QWidget):
         if not txt:
             self._show_error("no link detected")
             return
-        # If EZ simple paste is on, require a URL; otherwise, pass through
-        if getattr(getattr(self.settings, "ez", object()), "simple_paste_mode", False):
-            if not YOUTUBE_URL_RE.match(txt):
-                self._show_error("no link detected")
+        ez = getattr(self.settings, "ez", None)
+        simple = bool(getattr(ez, "simple_paste_mode", False)) if ez else False
+        lines = [l.strip() for l in txt.splitlines() if l.strip()]
+        MAX_BATCH = 25
+        if not simple and len(lines) > 1:
+            added = 0
+            for line in lines:
+                if added >= MAX_BATCH:
+                    break
+                if YOUTUBE_URL_RE.search(line):
+                    self._handle_input(line)
+                    added += 1
+            if added:
                 return
+        # Simple mode: must be single valid URL
+        if simple and not YOUTUBE_URL_RE.match(txt):
+            self._show_error("no link detected")
+            return
         self.txt.setText(txt)
         try:
             self._process_text(txt, trigger="paste")
@@ -448,7 +481,7 @@ class Step1LinkWidget(QWidget):
                 self._handle_url(kind, norm, original=text)
                 return
 
-            auto = bool(getattr(self.settings.ui, "auto_search_text", True))  # CHANGED
+            auto = bool(getattr(self.settings.ui, "auto_search_text", True))
             if not auto:
                 if trigger in ("enter", "paste"):  # manual only
                     self._start_fetch(f"ytsearch20:{text}")
@@ -544,6 +577,52 @@ class Step1LinkWidget(QWidget):
         except Exception:
             return None
 
+    # ----- Drag & Drop (advanced mode only) -----
+
+    def dragEnterEvent(self, event):  # type: ignore[override]
+        try:
+            ez = getattr(self.settings, "ez", None)
+            simple = bool(getattr(ez, "simple_paste_mode", False)) if ez else False
+            if simple:
+                event.ignore()
+                return
+            md = event.mimeData()
+            if md and (md.hasUrls() or md.hasText()):
+                txt = (
+                    "".join([u.toString() for u in md.urls()])
+                    if md.hasUrls()
+                    else md.text()
+                )
+                if YOUTUBE_URL_RE.search(txt or ""):
+                    event.acceptProposedAction()
+                    return
+            event.ignore()
+        except Exception:
+            event.ignore()
+
+    def dropEvent(self, event):  # type: ignore[override]
+        try:
+            ez = getattr(self.settings, "ez", None)
+            simple = bool(getattr(ez, "simple_paste_mode", False)) if ez else False
+            if simple:
+                event.ignore()
+                return
+            md = event.mimeData()
+            txt = None
+            if md:
+                if md.hasUrls():
+                    txt = "\n".join([u.toString() for u in md.urls()])
+                elif md.hasText():
+                    txt = md.text()
+            if txt:
+                self.txt.setText(txt)
+                self._handle_paste_from_clipboard()
+                event.acceptProposedAction()
+                return
+            event.ignore()
+        except Exception:
+            event.ignore()
+
     # ----- Fetch and Queue Management -----
 
     def _start_fetch(self, url: str):
@@ -586,10 +665,6 @@ class Step1LinkWidget(QWidget):
                 f.finished_fail.disconnect()
             except Exception:
                 pass
-            try:
-                f.deleteLater()
-            except Exception:
-                pass
             self._fetchers.discard(f)
             if self.fetcher is f:
                 self.fetcher = None
@@ -606,7 +681,10 @@ class Step1LinkWidget(QWidget):
                 _cleanup_fetcher(f),
             )
         )
-        self.fetcher.finished.connect(lambda: None)  # keep event loop aware
+        # Ensure safe deletion when the thread fully finishes; avoid deleting early
+        self.fetcher.finished.connect(
+            lambda f=self.fetcher: getattr(f, "deleteLater", lambda: None)()
+        )
         self.fetcher.start()
 
     def _on_fetch_ok(self, rid: int, info: Dict):
@@ -927,7 +1005,7 @@ class Step1LinkWidget(QWidget):
     # --- Multi toggle: also hide/show playlist "Select all" ---
     def _on_multi_toggled(self, checked: bool):
         self.btn_next.setVisible(checked)
-        self.chk_pl_select_all.setVisible(checked)  # NEW
+        self.chk_pl_select_all.setVisible(checked)
         if checked:
             return
         if self.selected:
@@ -1172,7 +1250,7 @@ class Step1LinkWidget(QWidget):
             pass
         self._thumb_threads.clear()
 
-    # NEW: set icon in playlist tab by video URL
+    # Set icon in playlist tab by video URL
     def _set_playlist_icon_for_url(self, video_url: str, pix: QPixmap):
         try:
             for i in range(self.playlist_list.count()):
@@ -1188,7 +1266,7 @@ class Step1LinkWidget(QWidget):
         except Exception:
             pass
 
-    # NEW: set icon in selected tab by video URL
+    # Set icon in selected tab by video URL
     def _set_selected_icon_for_url(self, video_url: str, pix: QPixmap):
         try:
             for i in range(self.selected_list.count()):
@@ -1276,7 +1354,7 @@ class Step1LinkWidget(QWidget):
             w.finished.connect(lambda _w=w: self._on_thumb_finished(_w, url))
             w.start()
 
-    # NEW: worker finished handler (cleanup + start next)
+    # Worker finished handler (cleanup + start next)
     def _on_thumb_finished(self, w, url: str):
         try:
             self._thumb_active.discard(w)
@@ -1288,7 +1366,7 @@ class Step1LinkWidget(QWidget):
         finally:
             self._thumb_maybe_start()
 
-    # NEW: Lazy thumbnail loading for playlist based on scroll position
+    # Lazy thumbnail loading for playlist based on scroll position
     def _load_visible_playlist_thumbnails(self):
         try:
             if self.tabs.currentIndex() != self.idx_playlist:

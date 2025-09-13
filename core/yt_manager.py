@@ -138,7 +138,7 @@ def build_ydl_opts(
     if sb_cats_list:
         sb_cats_list = [c for c in sb_cats_list if c in _VALID_SB_CATEGORIES]
 
-    # CHANGED: allow SponsorBlock for audio and video in Python fallback
+    # Allow SponsorBlock for audio and video in Python fallback
     if sb_cats_list:
         opts["sponsorblock_remove"] = ",".join(sb_cats_list)
         if sponsorblock_api:
@@ -250,7 +250,7 @@ class Downloader(QThread):
     itemStatus = pyqtSignal(int, str)
     itemThumb = pyqtSignal(int, bytes)
     finished_all = pyqtSignal()
-    # NEW: announce final file for item when available
+    # Announce final file for item when available
     itemFileReady = pyqtSignal(int, str)
 
     def __init__(
@@ -326,7 +326,7 @@ class Downloader(QThread):
 
         return hook
 
-    # NEW: find the final output file after yt-dlp finishes (accounts for postprocessors)
+    # Find the final output file after yt-dlp finishes (accounts for postprocessors)
     def _resolve_output_file(self, idx: int, kind: str, fmt: str) -> str | None:
         try:
             p = self._dl_filename.get(idx)
@@ -358,7 +358,7 @@ class Downloader(QThread):
         except Exception:
             return self._dl_filename.get(idx)
 
-    # NEW: Build CLI args for yt-dlp binary to mirror Python options
+    # Build CLI args for yt-dlp binary to mirror Python options
     def _build_cli_args(
         self,
         url: str,
@@ -422,7 +422,7 @@ class Downloader(QThread):
             fsel = _video_selector(height, fmt.lower())
             args += ["-f", fsel, "--merge-output-format", fmt]
 
-        # CHANGED: SponsorBlock for both audio and video; also mark chapters to ensure cutting works
+        # SponsorBlock for both audio and video; also mark chapters to ensure cutting works
         if sb_enabled:
             cats = [c for c in (sb_cats or []) if c in _VALID_SB_CATEGORIES]
             args += ["--sponsorblock-mark", "all"]
@@ -442,7 +442,7 @@ class Downloader(QThread):
         args.append(url)
         return args
 
-    # NEW: parse progress lines from yt-dlp stdout
+    # Parse progress lines from yt-dlp stdout
     def _parse_progress_line(self, line: str):
         # Expected: "DL|downloaded|total|speed|eta"
         try:
@@ -460,7 +460,7 @@ class Downloader(QThread):
         except Exception:
             return None
 
-    # NEW: download using the yt-dlp binary (preferred for SponsorBlock correctness)
+    # Download using the yt-dlp binary (preferred for SponsorBlock correctness)
     def _download_with_binary(
         self,
         idx: int,
@@ -483,7 +483,7 @@ class Downloader(QThread):
                 sb_cats,
             )
             kwargs = _win_no_window_kwargs()
-            # NEW: disable third-party plugins for stability
+            # Disable third-party plugins for stability
             env = os.environ.copy()
             env["YTDLP_NO_PLUGINS"] = "1"
             proc = subprocess.Popen(
@@ -498,7 +498,7 @@ class Downloader(QThread):
             )
             self.itemStatus.emit(idx, "Downloading...")
             for line in proc.stdout or []:
-                # CHANGED: never block reading stdout; just suppress UI updates while paused
+                # Never block reading stdout; just suppress UI updates while paused
                 paused = not self._pause_evt.is_set()
                 if self._stop:
                     try:

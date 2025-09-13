@@ -50,7 +50,7 @@ def _log_dir() -> str:
         return fallback
 
 
-# NEW: helper to write both timestamped and rolling logs, returns the timestamped path
+# Helper to write both timestamped and rolling logs, returns the timestamped path
 def _write_crash_log(exctype, value, tb_text: str) -> str | None:
     try:
         from datetime import datetime
@@ -192,6 +192,9 @@ from widgets.step1_link import Step1LinkWidget
 from widgets.step3_quality import Step3QualityWidget
 from widgets.step4_downloads import Step4DownloadsWidget
 from widgets.settings_page import SettingsPage
+from widgets.faq_page import FaqPage
+from core.logging import export_logs
+from core.models import UpdateAction
 
 
 def _read_version_from_file() -> str:
@@ -303,19 +306,39 @@ class MainWindow(QMainWindow):
         self._ensure_ffmpeg()
         self._ensure_ytdlp()
 
-        # yt-dlp auto update
-        if self.settings.ytdlp.auto_update:
-            self._check_ytdlp_updates(startup=True)
+        # yt-dlp auto update per schedule (default Daily)
+        try:
+            if getattr(self.settings, "ytdlp_update", None):
+                cad = getattr(self.settings.ytdlp_update.schedule, "cadence", None)
+                if str(cad).lower() != str("off"):
+                    self._check_ytdlp_updates(startup=True)
+            elif self.settings.ytdlp.auto_update:
+                self._check_ytdlp_updates(startup=True)
+        except Exception:
+            if self.settings.ytdlp.auto_update:
+                self._check_ytdlp_updates(startup=True)
 
-        # App auto update on launch or check-and-prompt (mutually exclusive)
-        if self.settings.app.auto_update:
-            self._check_app_updates(check_only=False, prompt_on_available=False)
-        elif getattr(self.settings.app, "check_on_launch", False):
-            self._check_app_updates(check_only=True, prompt_on_available=True)
+        # App update behavior via unified action (default Prompt)
+        try:
+            action = getattr(self.settings.app_update, "action", UpdateAction.PROMPT)
+            if action == UpdateAction.AUTO:
+                self._check_app_updates(check_only=False, prompt_on_available=False)
+            elif action == UpdateAction.PROMPT:
+                self._check_app_updates(check_only=True, prompt_on_available=True)
+        except Exception:
+            # Fallback to legacy flags
+            if self.settings.app.auto_update:
+                self._check_app_updates(check_only=False, prompt_on_available=False)
+            elif getattr(self.settings.app, "check_on_launch", False):
+                self._check_app_updates(check_only=True, prompt_on_available=True)
 
         self._refresh_stepper_titles()
 
         self._bg_fetcher = None
+        try:
+            self._apply_theme()
+        except Exception:
+            pass
 
     def _build_sidebar(self) -> QWidget:
         side = QFrame()
@@ -361,7 +384,7 @@ class MainWindow(QMainWindow):
         flow_layout.addWidget(self.flow_stack)
 
         # Settings page
-        self.settings_page = SettingsPage(self.settings)  # inner widget
+        self.settings_page = SettingsPage(self.settings)
 
         # Make settings scrollable
         self.settings_scroll = QScrollArea()
@@ -395,14 +418,27 @@ class MainWindow(QMainWindow):
         self.step4.allFinished.connect(self._on_downloads_finished)
         self.step4.backRequested.connect(self._back_from_step3)
 
-        # Settings page signals (connect on inner widget)
-        self.settings_page.changed.connect(self._settings_changed)
-        self.settings_page.accentPickRequested.connect(self._pick_accent)
-        self.settings_page.checkYtDlpRequested.connect(self._check_ytdlp_updates)
-        self.settings_page.checkAppCheckOnlyRequested.connect(
-            lambda: self._check_app_updates(check_only=True, prompt_on_available=True)
-        )
+        # Settings actions
         try:
+            self.settings_page.openFaqRequested.connect(self._open_faq)
+        except Exception:
+            pass
+        try:
+            self.settings_page.exportLogsRequested.connect(self._export_logs)
+        except Exception:
+            pass
+
+        # Settings page signals (connect on inner widget)
+        # Connect once; SettingsPage already guards emits
+        try:
+            self.settings_page.changed.connect(self._settings_changed)
+            self.settings_page.accentPickRequested.connect(self._pick_accent)
+            self.settings_page.checkYtDlpRequested.connect(self._check_ytdlp_updates)
+            self.settings_page.checkAppCheckOnlyRequested.connect(
+                lambda: self._check_app_updates(
+                    check_only=True, prompt_on_available=True
+                )
+            )
             if hasattr(self.settings_page, "clearLogsRequested"):
                 self.settings_page.clearLogsRequested.connect(self._clear_all_logs)
         except Exception:
@@ -461,8 +497,9 @@ class MainWindow(QMainWindow):
 
             self._bg_fetcher.finished_ok.connect(_ok)
             self._bg_fetcher.finished_fail.connect(_fail)
+            # Capture instance at connect time to safely delete when finished
             self._bg_fetcher.finished.connect(
-                lambda: getattr(self._bg_fetcher, "deleteLater", lambda: None)()
+                (lambda f=self._bg_fetcher: getattr(f, "deleteLater", lambda: None)())
             )
             self._bg_fetcher.start()
             return
@@ -486,8 +523,9 @@ class MainWindow(QMainWindow):
 
             self._bg_fetcher.finished_ok.connect(_ok)
             self._bg_fetcher.finished_fail.connect(_fail)
+            # Capture instance at connect time to safely delete when finished
             self._bg_fetcher.finished.connect(
-                lambda: getattr(self._bg_fetcher, "deleteLater", lambda: None)()
+                (lambda f=self._bg_fetcher: getattr(f, "deleteLater", lambda: None)())
             )
             self._bg_fetcher.start()
             return
@@ -557,7 +595,10 @@ class MainWindow(QMainWindow):
         # Persist changes immediately using SettingsPage
         self.settings_page.apply_to(self.settings)
         self.settings_mgr.save(self.settings)
-        # Apply EZ Mode live if toggled
+        try:
+            self._apply_theme()
+        except Exception:
+            pass
         try:
             if hasattr(self.step1, "apply_ez_mode"):
                 self.step1.apply_ez_mode(self.settings)
@@ -574,7 +615,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # NEW: clear all logs handler (used by SettingsPage "Clear All Logs" button)
+    # Clear all logs handler (used by SettingsPage "Clear All Logs" button)
     def _clear_all_logs(self):
         import shutil
 
@@ -934,6 +975,8 @@ class MainWindow(QMainWindow):
                 setattr(app, "auto_reset_after_downloads", True)
             if not hasattr(app, "notifications_detail"):
                 setattr(app, "notifications_detail", "detailed")
+            if not hasattr(ui, "theme_mode"):
+                setattr(ui, "theme_mode", "system")  # system|light|dark|oled
             if not hasattr(self.settings, "ez"):
                 setattr(
                     self.settings,
@@ -960,6 +1003,69 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    # Apply theme stylesheet variants
+    def _apply_theme(self):
+        base = self.style_mgr.qss()
+        mode = getattr(self.settings.ui, "theme_mode", "system")
+        accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28")
+        extra = ""
+        if mode == "light":
+            extra = f"""
+            QWidget {{ background:#f2f2f2; color:#111; }}
+            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
+            .CategoryCard {{ background:#ffffff; border:1px solid #d7d7d9; border-radius:14px; }}
+            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
+            QPushButton {{ background:#ffffff; }}
+            """
+        elif mode == "oled":
+            extra = f"""
+            QWidget {{ background:#000000; color:#f5f5f5; }}
+            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
+            .CategoryCard {{ background:#0a0a0a; border:1px solid #202020; border-radius:14px; }}
+            QLabel[role='caption'] {{ color:#aaaaaa; font-size:11px; }}
+            QPushButton {{ background:#111111; }}
+            """
+        elif mode == "dark":
+            extra = f"""
+            .CategoryCard {{ background:#1e1f22; border:1px solid #2d2f33; border-radius:14px; }}
+            QLabel[role='caption'] {{ color:#b0b2b8; font-size:11px; }}
+            """
+        else:
+            extra = f"""
+            .CategoryCard {{ background:rgba(255,255,255,0.5); border:1px solid #cccccc; border-radius:14px; backdrop-filter:blur(12px); }}
+            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
+            """
+        themed = base + "\n" + extra + f"\n:root {{ --accent: {accent}; }}"
+        self.setStyleSheet(themed)
+
+    def _open_faq(self):
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("FAQ")
+            dlg.setMinimumSize(640, 480)
+            lay = QVBoxLayout(dlg)
+            page = FaqPage(dlg)
+            lay.addWidget(page)
+            bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            bb.rejected.connect(dlg.reject)
+            lay.addWidget(bb)
+            dlg.exec()
+        except Exception:
+            pass
+
+    def _export_logs(self):
+        try:
+            path = export_logs()
+            if not path:
+                self.toast.info("No logs available to export.")
+                return
+            self.toast.success(f"Logs exported: {os.path.basename(path)}")
+        except Exception as e:
+            try:
+                self.toast.fail(f"Export logs failed: {e}")
+            except Exception:
+                pass
+
     def _cancel_bg_fetcher(self):
         try:
             if self._bg_fetcher is not None:
@@ -980,10 +1086,7 @@ class MainWindow(QMainWindow):
                     self._bg_fetcher.finished.disconnect()
                 except Exception:
                     pass
-                try:
-                    self._bg_fetcher.deleteLater()
-                except Exception:
-                    pass
+                # Do not delete thread directly here; finished handler deletes safely
                 self._bg_fetcher = None
         except Exception:
             pass

@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QProgressBar,
-    QFrame,  # NEW
+    QFrame,
 )
 
 from core.settings import AppSettings, SettingsManager
@@ -28,17 +28,15 @@ class DownloadItemWidget(QWidget):
         super().__init__()
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)  # keep in sync with Step 1 spacing feel
-        lay.setSpacing(6)  # CHANGED: tighter spacing
+        lay.setSpacing(6)
 
         self.thumb = QLabel()
         self.thumb.setFixedSize(96, 54)
         self.thumb.setStyleSheet(
             "background:#111;border:1px solid #333;border-radius:6px;"
         )
-        self.thumb.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )  # NEW: center with letterbox
-        self.thumb.setScaledContents(False)  # NEW: prevent stretch
+        self.thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)  # center with letterbox
+        self.thumb.setScaledContents(False)
 
         self.title = QLabel(title)
         self.title.setWordWrap(True)
@@ -57,7 +55,7 @@ class DownloadItemWidget(QWidget):
         lay.addLayout(col, 1)
 
         # Reserve full height before hiding status/progress so the list doesn't jump
-        self._full_size_hint = self.sizeHint()  # CHANGED: compute while visible
+        self._full_size_hint = self.sizeHint()
         self.status.hide()
         self.progress.hide()
 
@@ -68,7 +66,7 @@ class DownloadItemWidget(QWidget):
 class Step4DownloadsWidget(QWidget):
     allFinished = pyqtSignal()
     backRequested = pyqtSignal()
-    # NEW: signal for manual completion when auto-reset is disabled
+    # Signal for manual completion when auto-reset is disabled
     doneRequested = pyqtSignal()
 
     class _ThumbWorker(QThread):
@@ -93,9 +91,16 @@ class Step4DownloadsWidget(QWidget):
             except Exception:
                 pass
 
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings | None = None):
         super().__init__()
-        self.settings = settings
+        if settings is None:
+            try:
+                from core.settings import SettingsManager as _SM
+
+                settings = _SM().load()
+            except Exception:
+                pass
+        self.settings = settings  # type: ignore[assignment]
         self.settings_mgr = SettingsManager()
         self.items: List[Dict] = []
         self.kind = "audio"
@@ -103,7 +108,7 @@ class Step4DownloadsWidget(QWidget):
         self.quality = "best"
         self.downloader: Optional[Downloader] = None
         self._meta_fetchers: dict[int, InfoFetcher] = {}
-        self._thumb_threads: List[Step4DownloadsWidget._ThumbWorker] = []  # NEW
+        self._thumb_threads: List[Step4DownloadsWidget._ThumbWorker] = []
         self._downloading = False
         self._file_map = {}  # row -> filepath
 
@@ -111,15 +116,14 @@ class Step4DownloadsWidget(QWidget):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
 
-        # REMOVE top control row and move controls to footer
-        # top = QHBoxLayout()
+        # Footer controls
         self.btn_back = QPushButton("Back")
         self.lbl_dir = QLabel(self.settings.last_download_dir)
         self.btn_choose = QPushButton("Choose folder")
         self.btn_start = QPushButton("Start")
         self.btn_start.setEnabled(False)
         self.btn_stop = QPushButton("Stop")
-        self.btn_stop.setVisible(False)  # CHANGED: hidden until started
+        self.btn_stop.setVisible(False)  # Hidden until started
         self.btn_done = QPushButton("Done")
         self.btn_done.setVisible(False)
         self.btn_back.clicked.connect(self.backRequested.emit)
@@ -163,31 +167,9 @@ class Step4DownloadsWidget(QWidget):
         footer.addLayout(actions)
         lay.addLayout(footer)
 
-        # Add/prepare Done button (hidden by default)
-        try:
-            if not hasattr(self, "btn_done"):
-                self.btn_done = QPushButton("Done", self)
-                self.btn_done.setObjectName("PrimaryButton")
-                self.btn_done.setVisible(False)
-                try:
-                    # place on footer right if footer layout exists
-                    self.footerLayout.addWidget(self.btn_done)
-                except Exception:
-                    try:
-                        lay = QHBoxLayout()
-                        lay.addStretch(1)
-                        lay.addWidget(self.btn_done)
-                        self.layout().addLayout(lay)
-                    except Exception:
-                        pass
-                self.btn_done.clicked.connect(lambda: self.doneRequested.emit())
-        except Exception:
-            pass
-
         # Hook double click on list if available
         try:
-            if hasattr(self, "list"):
-                self.list.itemDoubleClicked.connect(self._open_item_file)
+            self.list.itemDoubleClicked.connect(self._open_item_file)
         except Exception:
             pass
 
@@ -201,7 +183,7 @@ class Step4DownloadsWidget(QWidget):
 
     def configure(self, selection: Dict, settings: AppSettings):
         # Stop any prior background metadata fetchers safely
-        self._cleanup_bg_metadata()  # NEW
+        self._cleanup_bg_metadata()
         if self.downloader:
             try:
                 self.downloader.stop()
@@ -250,18 +232,18 @@ class Step4DownloadsWidget(QWidget):
                 self._thumb_threads.append(worker)
                 worker.start()
             item = QListWidgetItem()
-            item.setSizeHint(w.full_size_hint())  # CHANGED: keep height stable
+            item.setSizeHint(w.full_size_hint())  # Keep height stable
             self.list.addItem(item)
             self.list.setItemWidget(item, w)
-        self.btn_start.setEnabled(True)
-        self.btn_start.setText("Start")
-        self.btn_done.setVisible(False)
-        self.btn_stop.setVisible(False)  # CHANGED: keep hidden until start
-        self.btn_stop.setEnabled(False)
+            self.btn_start.setEnabled(True)
+            self.btn_start.setText("Start")
+            self.btn_done.setVisible(False)
+            self.btn_stop.setVisible(False)  # Keep hidden until start
+            self.btn_stop.setEnabled(False)
 
-        # CHANGED: do not start background metadata fetching
-        # if getattr(self.settings.ui, "background_metadata_enabled", True):
-        #     self._start_bg_metadata()
+    # Do not start background metadata fetching
+    # if getattr(self.settings.ui, "background_metadata_enabled", True):
+    #     self._start_bg_metadata()
 
     def _start_bg_metadata(self):
         for idx, it in enumerate(self.items):
@@ -307,7 +289,7 @@ class Step4DownloadsWidget(QWidget):
             self._meta_fetchers[idx] = f
             f.start()
 
-    def _cleanup_bg_metadata(self):  # NEW
+    def _cleanup_bg_metadata(self):
         """Safely disconnect and clean up metadata fetchers"""
         for i, f in list(self._meta_fetchers.items()):
             try:
@@ -328,7 +310,7 @@ class Step4DownloadsWidget(QWidget):
         except Exception:
             pass
 
-    # NEW: small helper to mirror Downloader heuristic
+    # Small helper to mirror Downloader heuristic
     def _needs_metadata(self, it: dict) -> bool:
         """Determine if an item needs metadata fetching"""
         if not it:
@@ -402,7 +384,7 @@ class Step4DownloadsWidget(QWidget):
         self.downloader.finished_all.connect(self._on_all_finished)
         self.btn_start.setText("Pause")
         self.btn_start.setEnabled(True)
-        self.btn_stop.setVisible(True)  # CHANGED: show Stop once started
+        self.btn_stop.setVisible(True)  # Show Stop once started
         self.btn_stop.setEnabled(True)
         self.downloader.start()
 
@@ -512,6 +494,35 @@ class Step4DownloadsWidget(QWidget):
         except Exception:
             pass
 
+    # Public method for integration test robustness (T025/T014 expectations)
+    def open_or_reveal(self, item: dict):  # type: ignore[override]
+        """Open file if it exists, else reveal containing folder, else no-op.
+
+        Must not raise exceptions even on malformed input.
+        """
+        try:
+            path = item.get("output_path") if isinstance(item, dict) else None
+            if path and os.path.exists(path):
+                if sys.platform.startswith("win"):
+                    os.startfile(path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", path])
+                else:
+                    subprocess.Popen(["xdg-open", path])
+                return
+            # Try containing folder if path is defined but missing
+            if path:
+                folder = os.path.dirname(path)
+                if folder and os.path.isdir(folder):
+                    if sys.platform.startswith("win"):
+                        os.startfile(folder)
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(["open", folder])
+                    else:
+                        subprocess.Popen(["xdg-open", folder])
+        except Exception:
+            pass
+
     def _get_widget(self, idx: int) -> Optional[DownloadItemWidget]:
         it = self.list.item(idx)
         if not it:
@@ -573,7 +584,40 @@ class Step4DownloadsWidget(QWidget):
         except Exception:
             pass
 
-    # NEW: apply a thumbnail to the matching list widget by video URL
+    # --- Open / reveal helper (robust against missing file) ---
+    def open_or_reveal(
+        self, item: dict
+    ):  # item shape from test (dict with output_path)
+        try:
+            path = (item or {}).get("output_path")
+            if not path:
+                return
+            if not os.path.exists(path):
+                # Attempt to reveal parent directory if exists
+                parent = os.path.dirname(path)
+                if parent and os.path.isdir(parent):
+                    try:
+                        if sys.platform.startswith("win"):
+                            os.startfile(parent)
+                        elif sys.platform == "darwin":
+                            subprocess.Popen(["open", parent])
+                        else:
+                            subprocess.Popen(["xdg-open", parent])
+                    except Exception:
+                        pass
+                return
+            # Open existing file
+            if sys.platform.startswith("win"):
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            # Intentionally swallow exceptions for robustness
+            pass
+
+    # Apply a thumbnail to the matching list widget by video URL
     def _set_dl_thumb_if_match(self, video_url: str, pix: QPixmap):
         try:
             for i, it in enumerate(self.items):
@@ -591,3 +635,7 @@ class Step4DownloadsWidget(QWidget):
                     break
         except Exception:
             pass
+
+
+# Backward compatibility alias for tests expecting DownloadsWidget
+DownloadsWidget = Step4DownloadsWidget
