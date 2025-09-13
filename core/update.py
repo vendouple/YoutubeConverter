@@ -222,15 +222,20 @@ class AppUpdateWorker(QThread):
                 if rel:
                     return rel
             elif self.channel == "prerelease":
+                # Prefer the most recent prerelease that is not literally named 'nightly'
                 rel = next(
                     (
                         x
                         for x in rels
                         if x.get("prerelease")
                         and (x.get("tag_name") or "").lower() != "nightly"
+                        and (x.get("name") or "").lower() != "nightly"
                     ),
                     None,
-                ) or next((x for x in rels if x.get("prerelease")), None)
+                )
+                if not rel:
+                    # Fallback: any prerelease (maintains behavior if no clean prerelease exists)
+                    rel = next((x for x in rels if x.get("prerelease")), None)
                 if rel:
                     return rel
             else:
@@ -425,7 +430,7 @@ if __name__ == "__main__":
 _CADENCE_SECONDS = {
     UpdateCadence.DAILY: 60 * 60 * 24,
     UpdateCadence.WEEKLY: 60 * 60 * 24 * 7,
-    UpdateCadence.MONTHLY: 60 * 60 * 24 * 30,  # Simplified month length
+    UpdateCadence.MONTHLY: 60 * 60 * 24 * 30,
 }
 
 
@@ -465,7 +470,7 @@ def is_schedule_due(s: UpdateSchedule, now: Optional[float] = None) -> bool:
     target = next_schedule_due(s, now)
     if target is None:
         return False
-    return now >= target - 1e-6  # tolerate float rounding
+    return now >= target - 1e-6
 
 
 # ---------------- Update Flow State Machine (T030) -----------------

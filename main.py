@@ -184,7 +184,7 @@ from core.settings import SettingsManager, AppSettings, SETTINGS_DIR
 
 from core.ffmpeg_manager import FfmpegInstaller, ensure_ffmpeg_in_path
 from core.update import YtDlpUpdateWorker, AppUpdateWorker
-from core.yt_manager import InfoFetcher  # kept
+from core.yt_manager import InfoFetcher
 from ui.style import StyleManager
 from ui.stepper import Stepper
 from ui.toast import ToastManager
@@ -762,7 +762,6 @@ class MainWindow(QMainWindow):
     def _show_update_prompt(
         self, remote_ver: str, local_ver: str, changelog_md: str | None
     ) -> bool:
-        # Win11-like, keep native border/title
         dlg = QDialog(self)
         dlg.setWindowTitle("Update Available")
         dlg.setModal(True)
@@ -882,7 +881,9 @@ class MainWindow(QMainWindow):
                 staging = os.path.join(root, "_update_staging")
                 if os.path.isdir(staging):
                     pid = os.getpid()
-                    exe = sys.executable
+                    # Only auto-restart for frozen builds; skip in dev/venv per request
+                    do_restart = bool(getattr(sys, "frozen", False))
+                    exe = sys.executable if do_restart else ""
                     ps_cmd = (
                         f"$pid={pid};"
                         f"Start-Process -Verb RunAs powershell -ArgumentList "
@@ -890,7 +891,8 @@ class MainWindow(QMainWindow):
                         f'"Wait-Process -Id $pid; '
                         f"Copy-Item -Path '{staging}\\*' -Destination '{root}' -Recurse -Force; "
                         f"Remove-Item -Path '{staging}' -Recurse -Force; "
-                        f"Start-Process -FilePath '{exe}'\""
+                        + (f"Start-Process -FilePath '{exe}'" if do_restart else "")
+                        + '"'
                     )
                     try:
                         import subprocess
@@ -921,7 +923,8 @@ class MainWindow(QMainWindow):
                                 else:
                                     shutil.copy2(src, dst)
                             shutil.rmtree(staging, ignore_errors=True)
-                            subprocess.Popen([exe])
+                            if getattr(sys, "frozen", False):
+                                subprocess.Popen([sys.executable])
                         except Exception:
                             pass
                     QApplication.quit()

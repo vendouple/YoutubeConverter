@@ -125,7 +125,8 @@ class SettingsPage(QWidget):
 
         # Updates (schedule-based)
         lay_updates = card(
-            "Updates", "How frequently to check for updates and which channels to use."
+            "Updates",
+            "Control how the app and yt-dlp update: schedule, channels, and behavior.",
         )
         sched_map = {"off": 0, "launch": 1, "daily": 2, "weekly": 3, "monthly": 4}
 
@@ -135,20 +136,26 @@ class SettingsPage(QWidget):
         y_lay = QVBoxLayout(y_section)
         y_lay.setContentsMargins(12, 10, 12, 10)
         y_lay.setSpacing(6)
-        y_lay.addWidget(QLabel("yt-dlp"))
+        y_lay.addWidget(QLabel("yt-dlp (downloader)"))
 
         row_y_sched = QHBoxLayout()
-        row_y_sched.addWidget(QLabel("Schedule:"))
+        row_y_sched.addWidget(QLabel("Check schedule:"))
         self.cmb_ytdlp_schedule = QComboBox()
-        self.cmb_ytdlp_schedule.addItems(["Off", "Every Launch", "Daily", "Weekly", "Monthly"])
+        self.cmb_ytdlp_schedule.addItems(
+            ["Off", "Every Launch", "Daily", "Weekly", "Monthly"]
+        )
         try:
             ytdlp_cadence = (
-                getattr(getattr(settings, "ytdlp_update", None), "schedule", None).cadence
+                getattr(
+                    getattr(settings, "ytdlp_update", None), "schedule", None
+                ).cadence
                 if getattr(settings, "ytdlp_update", None)
                 else None
             )
             if ytdlp_cadence:
-                self.cmb_ytdlp_schedule.setCurrentIndex(sched_map.get(ytdlp_cadence.value, 2))
+                self.cmb_ytdlp_schedule.setCurrentIndex(
+                    sched_map.get(ytdlp_cadence.value, 2)
+                )
             else:
                 self.cmb_ytdlp_schedule.setCurrentIndex(2)
         except Exception:
@@ -159,17 +166,19 @@ class SettingsPage(QWidget):
         y_lay.addLayout(row_y_sched)
 
         row_y_branch = QHBoxLayout()
-        row_y_branch.addWidget(QLabel("Branch:"))
+        row_y_branch.addWidget(QLabel("Release stream:"))
         self.cmb_ytdlp_branch = QComboBox()
         self.cmb_ytdlp_branch.addItems(["Release", "Master", "Nightly"])
         branch = (getattr(settings.ytdlp, "branch", "stable") or "stable").lower()
-        self.cmb_ytdlp_branch.setCurrentIndex({"stable": 0, "master": 1, "nightly": 2}.get(branch, 0))
+        self.cmb_ytdlp_branch.setCurrentIndex(
+            {"stable": 0, "master": 1, "nightly": 2}.get(branch, 0)
+        )
         row_y_branch.addWidget(self.cmb_ytdlp_branch, 1)
         y_lay.addLayout(row_y_branch)
 
         row_y_btn = QHBoxLayout()
         row_y_btn.addStretch(1)
-        self.btn_check_ytdlp = QPushButton("Check now")
+        self.btn_check_ytdlp = QPushButton("Check now…")
         self.btn_check_ytdlp.setFixedHeight(24)
         self.btn_check_ytdlp.clicked.connect(self.checkYtDlpRequested.emit)
         row_y_btn.addWidget(self.btn_check_ytdlp)
@@ -183,12 +192,14 @@ class SettingsPage(QWidget):
         a_lay = QVBoxLayout(a_section)
         a_lay.setContentsMargins(12, 10, 12, 10)
         a_lay.setSpacing(6)
-        a_lay.addWidget(QLabel("Application"))
+        a_lay.addWidget(QLabel("Application (this app)"))
 
         row_a_sched = QHBoxLayout()
-        row_a_sched.addWidget(QLabel("Schedule:"))
+        row_a_sched.addWidget(QLabel("Check schedule:"))
         self.cmb_app_schedule = QComboBox()
-        self.cmb_app_schedule.addItems(["Off", "Every Launch", "Daily", "Weekly", "Monthly"])
+        self.cmb_app_schedule.addItems(
+            ["Off", "Every Launch", "Daily", "Weekly", "Monthly"]
+        )
         try:
             app_cadence = (
                 getattr(getattr(settings, "app_update", None), "schedule", None).cadence
@@ -196,7 +207,9 @@ class SettingsPage(QWidget):
                 else None
             )
             if app_cadence:
-                self.cmb_app_schedule.setCurrentIndex(sched_map.get(app_cadence.value, 2))
+                self.cmb_app_schedule.setCurrentIndex(
+                    sched_map.get(app_cadence.value, 2)
+                )
             else:
                 self.cmb_app_schedule.setCurrentIndex(2)
         except Exception:
@@ -207,20 +220,26 @@ class SettingsPage(QWidget):
         a_lay.addLayout(row_a_sched)
 
         row_a_channel = QHBoxLayout()
-        row_a_channel.addWidget(QLabel("Channel:"))
+        row_a_channel.addWidget(QLabel("Release channel:"))
         self.cmb_app_channel = QComboBox()
-        self.cmb_app_channel.addItems(["Release", "Prerelease", "Nightly"])
+        self.cmb_app_channel.addItems(["Release", "Nightly"])
         channel = (getattr(settings.app, "channel", "release") or "release").lower()
-        self.cmb_app_channel.setCurrentIndex({"release": 0, "prerelease": 1, "nightly": 2}.get(channel, 0))
+        self.cmb_app_channel.setCurrentIndex(
+            {"release": 0, "prerelease": 1, "nightly": 2}.get(channel, 0)
+        )
         row_a_channel.addWidget(self.cmb_app_channel, 1)
         a_lay.addLayout(row_a_channel)
 
         row_a_action = QHBoxLayout()
-        row_a_action.addWidget(QLabel("Behavior:"))
+        row_a_action.addWidget(QLabel("When an update is found:"))
         self.cmb_app_action = QComboBox()
-        self.cmb_app_action.addItems(["Prompt before updating", "Instantly update (auto)"])
+        self.cmb_app_action.addItems(
+            ["Prompt before updating", "Instantly update (auto)"]
+        )
         try:
-            act = getattr(getattr(settings, "app_update", None), "action", UpdateAction.PROMPT)
+            act = getattr(
+                getattr(settings, "app_update", None), "action", UpdateAction.PROMPT
+            )
             idx = 0 if act == UpdateAction.PROMPT else 1
         except Exception:
             idx = 0
@@ -230,7 +249,7 @@ class SettingsPage(QWidget):
 
         row_a_btn = QHBoxLayout()
         row_a_btn.addStretch(1)
-        self.btn_check_app = QPushButton("Check now")
+        self.btn_check_app = QPushButton("Check now…")
         self.btn_check_app.setFixedHeight(24)
         self.btn_check_app.clicked.connect(self.checkAppCheckOnlyRequested.emit)
         row_a_btn.addWidget(self.btn_check_app)
@@ -255,8 +274,6 @@ class SettingsPage(QWidget):
         self.advanced_quality_container.setObjectName("AdvancedQualityContainer")
         aq_lay = QVBoxLayout(self.advanced_quality_container)
         aq_lay.setContentsMargins(0, 0, 0, 0)
-        aq_lay.addWidget(QLabel("Advanced quality settings placeholder"))
-        lay_ez.addWidget(self.advanced_quality_container)
 
         def _sync_ez(on: bool):
             if on:
@@ -267,11 +284,7 @@ class SettingsPage(QWidget):
 
         _sync_ez(self.chk_ez_simple.isChecked())
         self.chk_ez_simple.toggled.connect(_sync_ez)
-        # Also hide placeholder when simple mode toggled
-        self.chk_ez_simple.toggled.connect(
-            lambda on: self.advanced_quality_container.setVisible(not on)
-        )
-        self.advanced_quality_container.setVisible(not self.chk_ez_simple.isChecked())
+
         # Maintenance
         lay_maint = card("Maintenance", "Log management and diagnostics.")
         btn_logs = QPushButton("Clear all logs")

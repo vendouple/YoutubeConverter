@@ -82,6 +82,42 @@ class FaqPage(QWidget):
                 ),
             ),
             FaqEntry(
+                "Downloads",
+                "Downloads are very slow or keep failing",
+                (
+                    "This can be caused by:\n"
+                    "• Network congestion or unstable connection\n"
+                    "• YouTube rate limiting (try waiting and retrying)\n"
+                    "• Antivirus blocking the download\n"
+                    "• Disk space running low\n"
+                    "• Proxy/VPN interfering with connection\n\n"
+                    "Try changing your network, disabling VPN temporarily, or clearing browser cache."
+                ),
+            ),
+            FaqEntry(
+                "Downloads",
+                "Video/audio is out of sync after download",
+                (
+                    "This can happen with certain video formats. Try:\n"
+                    "• Selecting a different quality option\n"
+                    "• Using 'best' quality instead of specific resolution\n"
+                    "• For audio-only, choose a direct audio format\n"
+                    "• Check if the original video has sync issues"
+                ),
+            ),
+            FaqEntry(
+                "Downloads",
+                "Getting 'Video unavailable' or 'Private video' errors",
+                (
+                    "This occurs when:\n"
+                    "• Video is private, unlisted, or deleted\n"
+                    "• Video is geo-blocked in your region\n"
+                    "• Age-restricted content requiring sign-in\n"
+                    "• Copyright takedown\n\n"
+                    "Try accessing the video in your browser first to confirm availability."
+                ),
+            ),
+            FaqEntry(
                 "Updates",
                 "What do the update schedules mean?",
                 (
@@ -96,11 +132,35 @@ class FaqPage(QWidget):
                 ),
             ),
             FaqEntry(
+                "Updates",
+                "Update failed or app won't restart after update",
+                (
+                    "Try these steps:\n"
+                    "• Close the app completely and restart manually\n"
+                    "• Check if antivirus is blocking the update\n"
+                    "• Run as administrator if on Windows\n"
+                    "• Download fresh copy from official source\n"
+                    "• Export logs before updating for troubleshooting"
+                ),
+            ),
+            FaqEntry(
                 "SponsorBlock",
                 "How does SponsorBlock removal work?",
                 (
                     "When enabled, segments (e.g., sponsor/intro/outro) are removed using the community-maintained database. "
                     "You can choose which categories to remove."
+                ),
+            ),
+            FaqEntry(
+                "SponsorBlock",
+                "SponsorBlock isn't removing segments",
+                (
+                    "This can happen if:\n"
+                    "• Video is too new (segments not yet submitted)\n"
+                    "• No community submissions for this video\n"
+                    "• Network issues accessing SponsorBlock API\n"
+                    "• Selected categories don't match available segments\n\n"
+                    "SponsorBlock relies on community contributions, so newer or less popular videos may not have segments."
                 ),
             ),
             FaqEntry(
@@ -111,10 +171,130 @@ class FaqPage(QWidget):
                 ),
             ),
             FaqEntry(
+                "Troubleshooting",
+                "Where are the exported log files saved?",
+                (
+                    "Log zip files are saved to:\n"
+                    "Windows: %APPDATA%\\YoutubeConverter\\logs\\logs-YYYYMMDD-HHMMSS.zip\n"
+                    "Example: C:\\Users\\YourName\\AppData\\Roaming\\YoutubeConverter\\logs\\logs-20250913-143022.zip\n\n"
+                    "You can find this folder by:\n"
+                    "• Pressing Win+R, typing %APPDATA%\\YoutubeConverter\\logs and hitting Enter\n"
+                    "• The app shows the filename in a success toast after export"
+                ),
+            ),
+            FaqEntry(
+                "Troubleshooting",
+                "App crashes on startup or won't open",
+                (
+                    "Try these solutions:\n"
+                    "• Update graphics drivers\n"
+                    "• Run as administrator\n"
+                    "• Check Windows Event Viewer for error details\n"
+                    "• Disable antivirus temporarily\n"
+                    "• Clear app settings: Delete %APPDATA%\\YoutubeConverter folder\n"
+                    "• Reinstall Microsoft Visual C++ Redistributables"
+                ),
+            ),
+            FaqEntry(
+                "Troubleshooting",
+                "FFmpeg errors or 'Conversion failed'",
+                (
+                    "FFmpeg issues can occur due to:\n"
+                    "• Corrupted or missing FFmpeg binary\n"
+                    "• Unsupported video/audio codec\n"
+                    "• File path with special characters\n"
+                    "• Insufficient disk space\n"
+                    "• Antivirus quarantining FFmpeg\n\n"
+                    "Try reinstalling the app or adding FFmpeg folder to antivirus exclusions."
+                ),
+            ),
+            FaqEntry(
+                "Troubleshooting",
+                "High CPU/memory usage during downloads",
+                (
+                    "This is normal for video processing, but can be reduced by:\n"
+                    "• Downloading fewer concurrent streams\n"
+                    "• Choosing lower quality options\n"
+                    "• Closing other applications\n"
+                    "• Using audio-only format for music\n"
+                    "• Avoiding video conversion when possible"
+                ),
+            ),
+            FaqEntry(
+                "Troubleshooting",
+                "App interface appears corrupted or unreadable",
+                (
+                    "Display issues can be fixed by:\n"
+                    "• Changing theme in Settings → Appearance\n"
+                    "• Adjusting Windows display scaling (100%, 125%, 150%)\n"
+                    "• Updating graphics drivers\n"
+                    "• Try different color theme (Dark/Light/OLED)\n"
+                    "• Reset app settings if problem persists"
+                ),
+            ),
+            FaqEntry(
+                "File Management",
+                "Where are downloaded files saved?",
+                (
+                    "By default, files are saved to your Downloads folder. You can change the destination in Settings or during the download process. "
+                    "The app remembers your last used location."
+                ),
+            ),
+            FaqEntry(
+                "File Management",
+                "How to organize downloads by playlist/channel?",
+                (
+                    "The app can create subfolders based on:\n"
+                    "• Playlist name\n"
+                    "• Channel name\n"
+                    "• Upload date\n\n"
+                    "Configure this in Settings → Downloads → Folder structure options."
+                ),
+            ),
+            FaqEntry(
+                "File Management",
+                "Downloaded file has wrong extension or won't play",
+                (
+                    "This can happen if:\n"
+                    "• Codec not supported by your media player\n"
+                    "• File corrupted during download\n"
+                    "• Wrong format selected\n\n"
+                    "Try:\n"
+                    "• Using VLC media player (supports most formats)\n"
+                    "• Re-downloading with different quality\n"
+                    "• Converting to MP4/MP3 format"
+                ),
+            ),
+            FaqEntry(
+                "Performance",
+                "How to speed up downloads?",
+                (
+                    "To optimize download speed:\n"
+                    "• Use wired internet connection\n"
+                    "• Close bandwidth-heavy applications\n"
+                    "• Select appropriate quality (higher = slower)\n"
+                    "• Download during off-peak hours\n"
+                    "• Ensure sufficient free disk space\n"
+                    "• Consider downloading audio-only for music"
+                ),
+            ),
+            FaqEntry(
                 "Accessibility",
                 "Is there a high-contrast theme?",
                 (
                     "Yes. Choose 'Dark' or 'OLED' themes in Settings → Appearance. The UI aims for improved contrast and readable controls."
+                ),
+            ),
+            FaqEntry(
+                "Accessibility",
+                "Keyboard shortcuts and navigation",
+                (
+                    "The app supports:\n"
+                    "• Tab navigation through interface elements\n"
+                    "• Enter to activate buttons\n"
+                    "• Escape to close dialogs\n"
+                    "• Ctrl+V to paste URLs\n"
+                    "• Standard Windows accessibility features"
                 ),
             ),
         ]
