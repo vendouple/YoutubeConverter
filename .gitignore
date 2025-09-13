@@ -2,4 +2,7 @@
 settings.json
 /yt-dlp-bin
 *.pyc
-
+*.pytest_cache/
+_pytest_cache/
+__pycache__/
+_init_.py

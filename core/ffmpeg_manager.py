@@ -10,8 +10,8 @@ if getattr(__import__("sys"), "frozen", False):
 else:
     ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Install directly into root next to the executable
-FF_DIR = ROOT_DIR  # CHANGED: place binaries in program root
+# Install into a dedicated subfolder under the app root
+FF_DIR = os.path.join(ROOT_DIR, "ffmpeg")
 FF_EXE = os.path.join(FF_DIR, "ffmpeg.exe")
 FP_EXE = os.path.join(FF_DIR, "ffprobe.exe")
 
@@ -69,14 +69,11 @@ class FfmpegInstaller(QThread):
                 )
                 if not ffmpeg_name or not ffprobe_name:
                     raise RuntimeError("ffmpeg.exe or ffprobe.exe not found in archive")
-                # Extract to a temp dir inside FF_DIR to then flatten
                 z.extract(ffmpeg_name, FF_DIR)
                 z.extract(ffprobe_name, FF_DIR)
                 src_ff = os.path.join(FF_DIR, ffmpeg_name)
                 src_fp = os.path.join(FF_DIR, ffprobe_name)
-                # Ensure parent dir
                 os.makedirs(FF_DIR, exist_ok=True)
-                # Move/replace to FF_DIR root (program root)
                 if os.path.exists(FF_EXE):
                     try:
                         os.remove(FF_EXE)
@@ -97,5 +94,7 @@ class FfmpegInstaller(QThread):
             os.remove(tmp_zip)
             add_to_path(FF_DIR)
             self.finished_ok.emit(FF_DIR)
+        except Exception as e:
+            self.finished_fail.emit(str(e))
         except Exception as e:
             self.finished_fail.emit(str(e))
