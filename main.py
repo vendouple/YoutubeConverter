@@ -247,6 +247,7 @@ class MainWindow(QMainWindow):
         self._migrate_settings()
 
         self.style_mgr = StyleManager(self.settings.ui.accent_color_hex)
+
         self.setStyleSheet(self.style_mgr.qss())
         self.toast = ToastManager(self)
 
@@ -800,9 +801,7 @@ class MainWindow(QMainWindow):
 
         view = QTextBrowser()
         view.setOpenExternalLinks(True)
-        view.setStyleSheet(
-            "QTextBrowser { background: #1e1f22; border: 1px solid #34353b; border-radius: 8px; padding: 8px; }"
-        )
+        view.setObjectName("ChangelogBrowser")
         text = changelog_md or "_No changelog provided._"
         try:
             view.setMarkdown(text)
@@ -817,17 +816,10 @@ class MainWindow(QMainWindow):
         )
         btn_update = btns.button(QDialogButtonBox.StandardButton.Yes)
         btn_update.setText("Update now")
+        btn_update.setObjectName("PrimaryButton")
         btn_later = btns.button(QDialogButtonBox.StandardButton.No)
         btn_later.setText("Later")
-
-        for b in (btn_update, btn_later):
-            b.setStyleSheet(
-                f"QPushButton {{ background: #2a2b30; border: 1px solid #33343a; border-radius: 8px; padding: 6px 12px; }}"
-                f"QPushButton:hover {{ border-color: {accent}; }}"
-            )
-        btn_update.setStyleSheet(
-            f"QPushButton {{ background: {accent}; color: #ffffff; border: 1px solid {accent}; border-radius: 8px; padding: 6px 12px; }}"
-        )
+        btn_later.setObjectName("SecondaryButton")
 
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
@@ -1006,40 +998,18 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # Apply theme stylesheet variants
+    # Apply theme stylesheet variants (now delegated to StyleManager)
     def _apply_theme(self):
-        base = self.style_mgr.qss()
         mode = getattr(self.settings.ui, "theme_mode", "system")
         accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28")
-        extra = ""
-        if mode == "light":
-            extra = f"""
-            QWidget {{ background:#f2f2f2; color:#111; }}
-            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
-            .CategoryCard {{ background:#ffffff; border:1px solid #d7d7d9; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
-            QPushButton {{ background:#ffffff; }}
-            """
-        elif mode == "oled":
-            extra = f"""
-            QWidget {{ background:#000000; color:#f5f5f5; }}
-            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
-            .CategoryCard {{ background:#0a0a0a; border:1px solid #202020; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#aaaaaa; font-size:11px; }}
-            QPushButton {{ background:#111111; }}
-            """
-        elif mode == "dark":
-            extra = f"""
-            .CategoryCard {{ background:#1e1f22; border:1px solid #2d2f33; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#b0b2b8; font-size:11px; }}
-            """
-        else:
-            extra = f"""
-            .CategoryCard {{ background:rgba(255,255,255,0.5); border:1px solid #cccccc; border-radius:14px; backdrop-filter:blur(12px); }}
-            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
-            """
-        themed = base + "\n" + extra + f"\n:root {{ --accent: {accent}; }}"
+        # Ensure StyleManager has the current accent
+        self.style_mgr.with_accent(accent)
+        themed = self.style_mgr.theme_qss(mode)
         self.setStyleSheet(themed)
+
+    def resizeEvent(self, event):
+        """Handle window resize"""
+        super().resizeEvent(event)
 
     def _open_faq(self):
         try:

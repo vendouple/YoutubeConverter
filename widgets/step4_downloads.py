@@ -32,9 +32,9 @@ class DownloadItemWidget(QWidget):
 
         self.thumb = QLabel()
         self.thumb.setFixedSize(96, 54)
-        self.thumb.setStyleSheet(
-            "background:#111;border:1px solid #333;border-radius:6px;"
-        )
+        self.thumb.setObjectName(
+            "ThumbnailLabel"
+        )  # Use object name for theme-aware styling
         self.thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)  # center with letterbox
         self.thumb.setScaledContents(False)
 

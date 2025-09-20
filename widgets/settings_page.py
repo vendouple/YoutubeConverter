@@ -28,20 +28,9 @@ class SettingsPage(QWidget):
         super().__init__()
         self._settings = settings
 
-        # Unified stylesheet for cards & children (prevents striped backgrounds)
-        self.setStyleSheet(
-            self.styleSheet()
-            + """
-        QFrame#CategoryCard { background-color:#2b2b2b; border-radius:12px; border:1px solid rgba(255,255,255,0.05); }
-        QFrame#CategoryCard * { background-color:transparent; }
-        QFrame#CategoryCard QLabel[role="caption"] { color:rgba(255,255,255,0.55); font-size:12px; }
-        QFrame#CategoryCard QPushButton { min-height:24px; border-radius:6px; background-color:rgba(255,255,255,0.06); padding:2px 10px; }
-        QFrame#CategoryCard QPushButton:hover { background-color:rgba(255,255,255,0.12); }
-        QFrame#CategoryCard QComboBox, QFrame#CategoryCard QSpinBox { padding:2px 6px; border:1px solid rgba(255,255,255,0.15); border-radius:6px; }
-        QFrame#CategoryCard QComboBox:hover, QFrame#CategoryCard QSpinBox:hover { border-color:rgba(255,255,255,0.30); }
-        QFrame#CategoryCard QCheckBox { padding:2px 0; }
-        """
-        )
+        # Remove hardcoded dark styling to allow themes to work properly
+        # The CategoryCard styling is now handled by the main theme system
+        self.setStyleSheet("")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -77,7 +66,7 @@ class SettingsPage(QWidget):
         row_theme.addWidget(self.cmb_theme, 1)
         lay_app.addLayout(row_theme)
         btn_accent = QPushButton("Pick accent color")
-        btn_accent.setFixedHeight(24)
+        btn_accent.setObjectName("CompactButton")
         btn_accent.clicked.connect(self.accentPickRequested.emit)
         lay_app.addWidget(btn_accent)
         self.chk_auto_clear_success = QCheckBox("Auto clear finished downloads")
@@ -179,7 +168,7 @@ class SettingsPage(QWidget):
         row_y_btn = QHBoxLayout()
         row_y_btn.addStretch(1)
         self.btn_check_ytdlp = QPushButton("Check now…")
-        self.btn_check_ytdlp.setFixedHeight(24)
+        self.btn_check_ytdlp.setObjectName("CompactButton")
         self.btn_check_ytdlp.clicked.connect(self.checkYtDlpRequested.emit)
         row_y_btn.addWidget(self.btn_check_ytdlp)
         y_lay.addLayout(row_y_btn)
@@ -250,7 +239,7 @@ class SettingsPage(QWidget):
         row_a_btn = QHBoxLayout()
         row_a_btn.addStretch(1)
         self.btn_check_app = QPushButton("Check now…")
-        self.btn_check_app.setFixedHeight(24)
+        self.btn_check_app.setObjectName("CompactButton")
         self.btn_check_app.clicked.connect(self.checkAppCheckOnlyRequested.emit)
         row_a_btn.addWidget(self.btn_check_app)
         a_lay.addLayout(row_a_btn)
@@ -288,18 +277,18 @@ class SettingsPage(QWidget):
         # Maintenance
         lay_maint = card("Maintenance", "Log management and diagnostics.")
         btn_logs = QPushButton("Clear all logs")
-        btn_logs.setFixedHeight(24)
+        btn_logs.setObjectName("CompactButton")
         btn_logs.clicked.connect(self.clearLogsRequested.emit)
         lay_maint.addWidget(btn_logs)
         btn_export = QPushButton("Export logs (zip)")
-        btn_export.setFixedHeight(24)
+        btn_export.setObjectName("CompactButton")
         btn_export.clicked.connect(self.exportLogsRequested.emit)
         lay_maint.addWidget(btn_export)
 
         # Help / FAQ
         lay_help = card("Help", "Find answers to common questions.")
         btn_faq = QPushButton("Open FAQ")
-        btn_faq.setFixedHeight(24)
+        btn_faq.setObjectName("CompactButton")
         btn_faq.clicked.connect(self.openFaqRequested.emit)
         lay_help.addWidget(btn_faq)
 

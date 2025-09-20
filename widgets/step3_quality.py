@@ -204,37 +204,9 @@ class Step3QualityWidget(QWidget):
         self.cmb_sb_categories.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
         )
-        self.cmb_sb_categories.setStyleSheet(
-            f"""
-            QComboBox {{
-                background: #1f1f23;
-                border: 1px solid #3a3b40;
-                border-radius: 8px;
-                padding: 6px 12px;
-                min-height: 28px;
-            }}
-            QComboBox:hover {{
-                border-color: {accent};
-            }}
-            QComboBox:focus {{
-                border: 2px solid {accent};
-            }}
-            QComboBox::drop-down {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 28px;
-                border: none;
-            }}
-            QComboBox QAbstractItemView {{
-                background: #1f1f23;
-                border: 1px solid #3a3b40;
-                border-radius: 8px;
-                outline: none;
-                selection-background-color: #2b2c31;
-                padding: 4px;
-            }}
-            """
-        )
+        self.cmb_sb_categories.setObjectName(
+            "SponsorBlockComboBox"
+        )  # Use object name for theme-aware styling
 
         m = QStandardItemModel(self.cmb_sb_categories)
         self.cmb_sb_categories.setModel(m)
@@ -277,7 +249,8 @@ class Step3QualityWidget(QWidget):
             _update_sb_display()
             self._persist_sb_settings()
             # Debug output of categories
-            print(f"SponsorBlock categories selected: {self._get_sb_categories()}")
+            # Debug: SponsorBlock categories selection (disabled in production)
+            # print(f"SponsorBlock categories selected: {self._get_sb_categories()}")
 
         self.cmb_sb_categories.view().pressed.connect(lambda mi: _toggle_item(mi.row()))
         _update_sb_display()
@@ -518,10 +491,12 @@ class Step3QualityWidget(QWidget):
                     if key:
                         res.append(key)
             # Debug print current categories when fetched
-            print(f"SponsorBlock categories being used: {res}")
+            # Debug: SponsorBlock categories being used (disabled in production)
+            # print(f"SponsorBlock categories being used: {res}")
             return res
         except Exception as e:
-            print(f"Error getting SponsorBlock categories: {e}")
+            # Debug: error getting SponsorBlock categories (disabled in production)
+            # print(f"Error getting SponsorBlock categories: {e}")
             return []
 
     def _apply_all_toggled(self, checked: bool):
@@ -672,8 +647,9 @@ class Step3QualityWidget(QWidget):
         sb_cats = self._get_sb_categories()
 
         # Log SponsorBlock settings for debugging
-        print(f"SponsorBlock enabled: {sb_enabled}")
-        print(f"SponsorBlock categories: {sb_cats}")
+        # Debug: SponsorBlock toggles (disabled in production)
+        # print(f"SponsorBlock enabled: {sb_enabled}")
+        # print(f"SponsorBlock categories: {sb_cats}")
 
         items_aug: List[Dict] = []
         for i, it in enumerate(self.items):

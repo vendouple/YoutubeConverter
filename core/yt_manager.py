@@ -143,7 +143,8 @@ def build_ydl_opts(
         opts["sponsorblock_remove"] = ",".join(sb_cats_list)
         if sponsorblock_api:
             opts["sponsorblock_api"] = sponsorblock_api
-        print(f"SponsorBlock remove set to: {opts['sponsorblock_remove']}")
+    # Debug: SponsorBlock remove set (disabled in production)
+    # print(f"SponsorBlock remove set to: {opts['sponsorblock_remove']}")
     return opts
 
 
@@ -587,15 +588,14 @@ class Downloader(QThread):
             sb_cats = [
                 c for c in (it.get("sb_categories") or []) if c in _VALID_SB_CATEGORIES
             ]
-            print(
-                f"Item {idx} SponsorBlock: enabled={sb_enabled}, categories={sb_cats}"
-            )
+            # Debug: printing formatted size (disabled in production)
+            # print(f"Item {idx} SponsorBlock: enabled={sb_enabled}, categories={sb_cats}")
 
             binary_exists = os.path.exists(YTDLP_EXE)
             if not binary_exists:
-                print(
-                    f"Warning: yt-dlp binary not found at {YTDLP_EXE}, falling back to Python API"
-                )
+                # Debug: printing percent (disabled in production)
+                # print(f"Warning: yt-dlp binary not found at {YTDLP_EXE}, falling back to Python API")
+                pass
 
             if binary_exists:
                 ok = self._download_with_binary(
@@ -621,9 +621,8 @@ class Downloader(QThread):
                 sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
                 sponsorblock_api=("https://sponsor.ajay.app" if sb_enabled else None),
             )
-            print(
-                f"yt-dlp options for item {idx}: SB={sb_enabled}, formats={opts.get('format')}"
-            )
+            # Debug: printing rate/ETA (disabled in production)
+            # print(f"yt-dlp options for item {idx}: SB={sb_enabled}, formats={opts.get('format')}")
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([url])
