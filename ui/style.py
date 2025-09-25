@@ -110,14 +110,22 @@ QPushButton#DangerButton {{
 QPushButton#DangerButton:hover {{ background: #d13a3a; }}
 QPushButton#DangerButton:pressed {{ background: #b22a2a; }}
 
-/* Segmented buttons (Audio/Video) */
+/* Segmented buttons (Audio/Video) - Balanced 50/50 menu style */
 QPushButton#SegmentButton {{
     background: #232428;
     border: 1px solid #34353b;
-    border-radius: 8px;
-    padding: 6px 10px;
+    border-radius: 6px;
+    padding: 6px 12px;
+    min-width: 70px;
+    max-width: 100px;
+    min-height: 28px;
+    font-weight: 500;
+    text-align: center;
 }}
-QPushButton#SegmentButton:hover {{ border-color: {ac}; }}
+QPushButton#SegmentButton:hover {{ 
+    border-color: {ac}; 
+    background: #2a2b30;
+}}
 QPushButton#SegmentButton:checked {{
     border-color: {ac};
     color: {ac};
@@ -314,11 +322,22 @@ QGroupBox::title {{
     background: transparent;
 }}
 
-/* Stepper */
+/* Stepper - Pill shaped with shorter height */
 #StepperLabel {{
-    background: #24252a; border: 1px solid #34353b; border-radius: 16px; padding: 6px 12px;
+    background: #24252a; 
+    border: 1px solid #34353b; 
+    border-radius: 16px; 
+    padding: 4px 16px;
+    min-width: 80px;
+    min-height: 28px;
+    font-weight: 500;
+    color: #e1e3e8;
 }}
-#StepperLabel[current="true"] {{ border-color: {ac}; color: {ac}; }}
+#StepperLabel[current="true"] {{ 
+    border-color: {ac}; 
+    color: {ac}; 
+    font-weight: 600;
+}}
 
 /* Update prompt components */
 QTextBrowser#ChangelogBrowser {{
@@ -348,11 +367,12 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             /* Light theme - Clean Windows 11 style */
             QWidget {{ background: #f7f8fa; color: #212529; }}
             QFrame#Sidebar {{ background: #eef0f3; border-right: 1px solid #d6dbe1; }}
-            /* Cards / groups */
+            /* Flat Cards - No neuromorphic effects */
             QFrame#CategoryCard, .CategoryCard {{ 
                 background: #ffffff; 
                 border: 1px solid #e5e7eb; 
-                border-radius: 14px; 
+                border-radius: 8px; 
+                padding: 12px;
             }}
             QGroupBox {{ 
                 border: 1px solid #e5e7eb; 
@@ -373,6 +393,32 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
                 background: #f3f4f6; 
             }}
             QPushButton:pressed {{ background: #e5e7eb; }}
+            
+            /* Light Segment Buttons (Video/Audio) - Balanced 50/50 menu style */
+            QPushButton#SegmentButton {{
+                background: #f3f4f6;
+                color: #6b7280;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                padding: 6px 12px;
+                min-width: 70px;
+                max-width: 100px;
+                min-height: 28px;
+                font-weight: 500;
+                text-align: center;
+            }}
+            QPushButton#SegmentButton:hover {{ 
+                border-color: {ac}; 
+                background: #e5e7eb;
+                color: #374151;
+            }}
+            QPushButton#SegmentButton:checked {{
+                border-color: {ac};
+                color: {ac};
+                background: #ffffff;
+                font-weight: 600;
+            }}
+            
             /* Inputs - ensure dropdowns are properly styled */
             QLineEdit, QComboBox, QTextEdit {{ 
                 background: #ffffff; 
@@ -461,19 +507,23 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
                 border: 1px solid #e5e7eb; 
                 border-radius: 8px;
             }}
+            /* Light Theme Tabs - Reduced height */
             QTabBar::tab {{ 
-                background: #f3f4f6; 
+                background: #f9fafb; 
                 color: #6b7280; 
                 border: 1px solid #e5e7eb; 
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 margin-right: 2px;
+                min-height: 24px;
+                font-weight: 500;
             }}
             QTabBar::tab:selected {{ 
                 background: #ffffff; 
                 color: {ac}; 
                 border-bottom-color: #ffffff;
+                font-weight: 600;
             }}
             QTabBar::tab:hover {{ 
                 background: #ffffff; 
@@ -549,9 +599,23 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             }}
             QSpinBox::up-arrow {{ border-bottom-color: #6b7280; }}
             QSpinBox::down-arrow {{ border-top-color: #6b7280; }}
-            /* Stepper (accent border only, no fill) */
-            #StepperLabel {{ background: #eef0f3; border: 1px solid #d6dbe1; border-radius: 16px; color: #374151; }}
-            #StepperLabel[current="true"] {{ border-color: {ac}; color: {ac}; }}
+            /* Light Stepper - Pill shaped with shorter height */
+            #StepperLabel {{ 
+                background: #ffffff; 
+                border: 1px solid #e5e7eb; 
+                border-radius: 16px; 
+                color: #6b7280; 
+                padding: 4px 16px;
+                min-width: 80px;
+                min-height: 28px;
+                font-weight: 500;
+            }}
+            #StepperLabel[current="true"] {{ 
+                border-color: {ac}; 
+                color: {ac}; 
+                background: {self._rgba(ac, 0.05)};
+                font-weight: 600;
+            }}
             /* Update prompt */
             QTextBrowser#ChangelogBrowser {{ background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; color: #374151; }}
             QPushButton#SecondaryButton {{ background: #f3f4f6; border: 1px solid #d6dbe1; border-radius: 8px; padding: 6px 12px; color: #374151; }}
@@ -569,9 +633,40 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             /* OLED theme - pure black */
             QWidget {{ background: #000000; color: #f8f9fa; }}
             QFrame#Sidebar {{ background: #000000; border-right: 1px solid #212529; }}
-            QFrame#CategoryCard, .CategoryCard {{ background: #0a0a0a; border: 1px solid #212529; border-radius: 14px; }}
+            /* Flat OLED Cards */
+            QFrame#CategoryCard, .CategoryCard {{ 
+                background: #0a0a0a; 
+                border: 1px solid #212529; 
+                border-radius: 8px; 
+                padding: 12px;
+            }}
             QPushButton {{ background: #111111; border: 1px solid #343a40; color: #f8f9fa; }}
             QPushButton:hover {{ background: #1a1a1a; border-color: {ac}; }}
+            
+            /* OLED Segment Buttons (Video/Audio) - Balanced 50/50 menu style */
+            QPushButton#SegmentButton {{
+                background: #0a0a0a;
+                color: #adb5bd;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                padding: 6px 12px;
+                min-width: 70px;
+                max-width: 100px;
+                min-height: 28px;
+                font-weight: 500;
+                text-align: center;
+            }}
+            QPushButton#SegmentButton:hover {{ 
+                border-color: {ac}; 
+                background: #1a1a1a;
+                color: #ffffff;
+            }}
+            QPushButton#SegmentButton:checked {{
+                border-color: {ac};
+                color: {ac};
+                background: #111111;
+                font-weight: 600;
+            }}
             QLineEdit, QComboBox, QTextEdit {{ background: #111111; border: 1px solid #343a40; color: #f8f9fa; }}
             QListView, QListWidget {{ background: #0a0a0a; border: 1px solid #212529; border-radius: 8px; }}
             QListView::item:hover, QListWidget::item:hover {{ background: #111111; border: 1px solid #343a40; }}
@@ -588,9 +683,22 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             QSpinBox::up-button, QSpinBox::down-button {{ background: #1a1a1a; border-color: #343a40; }}
             QSpinBox::up-arrow {{ border-bottom-color: #adb5bd; }}
             QSpinBox::down-arrow {{ border-top-color: #adb5bd; }}
-            /* Stepper (accent border only) */
-            #StepperLabel {{ background: #0e0e10; border: 1px solid #343a40; color: #e2e8f0; }}
-            #StepperLabel[current="true"] {{ border-color: {ac}; color: {ac}; }}
+            /* OLED Stepper - Pill shaped with shorter height */
+            #StepperLabel {{ 
+                background: #0a0a0a; 
+                border: 1px solid #2a2a2a; 
+                border-radius: 16px; 
+                color: #e2e8f0; 
+                padding: 4px 16px;
+                min-width: 80px;
+                min-height: 28px;
+                font-weight: 500;
+            }}
+            #StepperLabel[current="true"] {{ 
+                border-color: {ac}; 
+                color: {ac}; 
+                font-weight: 600;
+            }}
             /* Update prompt */
             QTextBrowser#ChangelogBrowser {{ background: #0a0a0a; border: 1px solid #212529; border-radius: 8px; padding: 8px; color: #f8f9fa; }}
             QPushButton#SecondaryButton {{ background: #111111; border: 1px solid #343a40; border-radius: 8px; padding: 6px 12px; color: #f8f9fa; }}
@@ -608,7 +716,39 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             /* Dark theme */
             QWidget {{ background: #1c1d20; color: #f0f0f0; }}
             QFrame#Sidebar {{ background: #202125; border-right: 1px solid #2e2f33; }}
-            QFrame#CategoryCard, .CategoryCard {{ background: #1e1f22; border: 1px solid #2d2f33; border-radius: 14px; }}
+            /* Flat Dark Cards */
+            QFrame#CategoryCard, .CategoryCard {{ 
+                background: #1e1f22; 
+                border: 1px solid #2d2f33; 
+                border-radius: 8px; 
+                padding: 12px;
+            }}
+            
+            /* Dark Segment Buttons (Video/Audio) - Balanced 50/50 menu style */
+            QPushButton#SegmentButton {{
+                background: rgba(255,255,255,0.05);
+                color: #b0b2b8;
+                border: 1px solid #3a3b40;
+                border-radius: 6px;
+                padding: 6px 12px;
+                min-width: 70px;
+                max-width: 100px;
+                min-height: 28px;
+                font-weight: 500;
+                text-align: center;
+            }}
+            QPushButton#SegmentButton:hover {{ 
+                border-color: {ac}; 
+                background: rgba(255,255,255,0.08);
+                color: #e1e3e8;
+            }}
+            QPushButton#SegmentButton:checked {{
+                border-color: {ac};
+                color: {ac};
+                background: rgba(255,255,255,0.1);
+                font-weight: 600;
+            }}
+            
             QLabel#ThumbnailLabel {{ background: #111111; border: 1px solid #333333; border-radius: 6px; }}
             /* SponsorBlock ComboBox */
             QComboBox#SponsorBlockComboBox {{ background: #1f1f23; border: 1px solid #3a3b40; border-radius: 8px; padding: 6px 12px; min-height: 28px; }}
@@ -622,9 +762,23 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             QSpinBox::up-button, QSpinBox::down-button {{ background: rgba(255,255,255,0.08); border-color: #3a3b40; }}
             QSpinBox::up-arrow {{ border-bottom-color: #b0b2b8; }}
             QSpinBox::down-arrow {{ border-top-color: #b0b2b8; }}
-            /* Stepper (accent border only) */
-            #StepperLabel {{ background: rgba(255,255,255,0.06); border: 1px solid #3a3b40; color: #e1e3e8; }}
-            #StepperLabel[current="true"] {{ border-color: {ac}; color: {ac}; }}
+            /* Dark Stepper - Pill shaped with shorter height */
+            #StepperLabel {{ 
+                background: rgba(255,255,255,0.06); 
+                border: 1px solid #3a3b40; 
+                border-radius: 16px; 
+                color: #e1e3e8; 
+                padding: 4px 16px;
+                min-width: 80px;
+                min-height: 28px;
+                font-weight: 500;
+            }}
+            #StepperLabel[current="true"] {{ 
+                border-color: {ac}; 
+                color: {ac}; 
+                background: {self._rgba(ac, 0.1)};
+                font-weight: 600;
+            }}
             /* Update prompt */
             QTextBrowser#ChangelogBrowser {{ background: #1e1f22; border: 1px solid #2d2f33; border-radius: 8px; padding: 8px; color: #e1e3e8; }}
             QPushButton#SecondaryButton {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 6px 12px; color: #e1e3e8; }}

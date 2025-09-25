@@ -28,8 +28,6 @@ class SettingsPage(QWidget):
         super().__init__()
         self._settings = settings
 
-        # Remove hardcoded dark styling to allow themes to work properly
-        # The CategoryCard styling is now handled by the main theme system
         self.setStyleSheet("")
 
         root = QVBoxLayout(self)

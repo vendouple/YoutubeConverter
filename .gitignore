@@ -6,5 +6,4 @@ settings.json
 _pytest_cache/
 __pycache__/
 _init_.py
-ffmpeg.exe
-ffprobe.exe
+/ffmpeg
