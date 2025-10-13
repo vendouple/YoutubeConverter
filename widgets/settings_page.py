@@ -56,11 +56,11 @@ class SettingsPage(QWidget):
         row_theme = QHBoxLayout()
         row_theme.addWidget(QLabel("Theme:"))
         self.cmb_theme = QComboBox()
-        self.cmb_theme.addItems(["System", "Light", "Dark", "OLED"])
-        cur_mode = getattr(settings.ui, "theme_mode", "system").lower()
-        self.cmb_theme.setCurrentIndex(
-            {"system": 0, "light": 1, "dark": 2, "oled": 3}.get(cur_mode, 0)
-        )
+        theme_options = ["Dark", "Light", "OLED"]
+        self.cmb_theme.addItems(theme_options)
+        cur_mode = getattr(settings.ui, "theme_mode", "dark").lower()
+        mode_to_index = {name.lower(): idx for idx, name in enumerate(theme_options)}
+        self.cmb_theme.setCurrentIndex(mode_to_index.get(cur_mode, 0))
         row_theme.addWidget(self.cmb_theme, 1)
         lay_app.addLayout(row_theme)
         btn_accent = QPushButton("Pick accent color")
@@ -97,9 +97,14 @@ class SettingsPage(QWidget):
             getattr(settings.app, "auto_reset_after_downloads", True)
         )
         lay_dl.addWidget(self.chk_auto_reset_after)
+        self.chk_verify_existing = QCheckBox("Skip downloading files that are already complete")
+        self.chk_verify_existing.setChecked(
+            getattr(settings.ui, "verify_existing_downloads", False)
+        )
+        lay_dl.addWidget(self.chk_verify_existing)
 
         # Notifications
-        lay_notif = card("Notifications", "Toast notification verbosity level.")
+        lay_notif = card("Notifications", "Toast notification verbosity level. (WIP, Doesnt work yet)")
         lay_notif.addWidget(QLabel("Notification detail level:"))
         self.cmb_notif = QComboBox()
         self.cmb_notif.addItems(["Detailed", "Minimal", "None"])
@@ -324,6 +329,7 @@ class SettingsPage(QWidget):
             self.chk_auto_search_text,
             self.spn_search_debounce,
             self.chk_auto_reset_after,
+            self.chk_verify_existing,
             self.cmb_notif,
             self.cmb_ytdlp_schedule,
             self.cmb_app_schedule,
@@ -364,11 +370,14 @@ class SettingsPage(QWidget):
 
     def apply_to(self, settings: AppSettings):
         mode = self.cmb_theme.currentText().lower()
-        settings.ui.theme_mode = "system" if mode == "system" else mode
+        if mode not in {"light", "dark", "oled"}:
+            mode = "dark"
+        settings.ui.theme_mode = mode
         settings.ui.auto_clear_on_success = self.chk_auto_clear_success.isChecked()
         settings.ui.auto_search_text = self.chk_auto_search_text.isChecked()
         settings.ui.search_debounce_seconds = int(self.spn_search_debounce.value())
         settings.app.auto_reset_after_downloads = self.chk_auto_reset_after.isChecked()
+        settings.ui.verify_existing_downloads = self.chk_verify_existing.isChecked()
         settings.app.notifications_detail = self.cmb_notif.currentText().lower()
         rev_sched = {0: "off", 1: "launch", 2: "daily", 3: "weekly", 4: "monthly"}
         # Update unified configs first

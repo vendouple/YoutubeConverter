@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QFrame,
+    QMessageBox,
 )
 
 from core.settings import AppSettings, SettingsManager
@@ -111,6 +112,7 @@ class Step4DownloadsWidget(QWidget):
         self._thumb_threads: List[Step4DownloadsWidget._ThumbWorker] = []
         self._downloading = False
         self._file_map = {}  # row -> filepath
+        self._nightly_prompt_shown = False
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -118,7 +120,16 @@ class Step4DownloadsWidget(QWidget):
 
         # Footer controls
         self.btn_back = QPushButton("Back")
-        self.lbl_dir = QLabel(self.settings.last_download_dir)
+        try:
+            last_dir = getattr(self.settings, "last_download_dir", "")
+        except Exception:
+            last_dir = ""
+        if not last_dir:
+            try:
+                last_dir = os.path.expanduser("~")
+            except Exception:
+                last_dir = ""
+        self.lbl_dir = QLabel(last_dir)
         self.btn_choose = QPushButton("Choose folder")
         self.btn_start = QPushButton("Start")
         self.btn_start.setEnabled(False)
@@ -190,6 +201,7 @@ class Step4DownloadsWidget(QWidget):
             except Exception:
                 pass
             self.downloader = None
+        self._nightly_prompt_shown = False
         self.items = selection.get("items", [])
         self.kind = selection.get("kind", settings.defaults.kind)
         self.fmt = selection.get("format", settings.defaults.format)
@@ -360,8 +372,12 @@ class Step4DownloadsWidget(QWidget):
         base = self.lbl_dir.text()
         os.makedirs(base, exist_ok=True)
         # Save last dir
-        self.settings.last_download_dir = base
-        self.settings_mgr.save(self.settings)
+        try:
+            if self.settings is not None:
+                self.settings.last_download_dir = base
+                self.settings_mgr.save(self.settings)
+        except Exception:
+            pass
 
         # Ensure all items show their UI only now
         for i in range(self.list.count()):
@@ -374,14 +390,28 @@ class Step4DownloadsWidget(QWidget):
                 w.progress.show()
 
         ff_path = FF_DIR if os.path.exists(FF_EXE) else None
+        verify_existing = False
+        try:
+            verify_existing = bool(
+                getattr(getattr(self.settings, "ui", None), "verify_existing_downloads", False)
+            )
+        except Exception:
+            verify_existing = False
         self.downloader = Downloader(
-            self.items, base, self.kind, self.fmt, ff_path, quality=self.quality
+            self.items,
+            base,
+            self.kind,
+            self.fmt,
+            ff_path,
+            quality=self.quality,
+            verify_existing=verify_existing,
         )
         self.downloader.itemStatus.connect(self._on_item_status)
         self.downloader.itemProgress.connect(self._on_item_progress)
         self.downloader.itemThumb.connect(self._on_item_thumb)
         self.downloader.itemFileReady.connect(self._on_item_file_ready)
         self.downloader.finished_all.connect(self._on_all_finished)
+        self.downloader.retryLimitReached.connect(self._on_retry_limit)
         self.btn_start.setText("Pause")
         self.btn_start.setEnabled(True)
         self.btn_stop.setVisible(True)  # Show Stop once started
@@ -399,6 +429,7 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setEnabled(False)
         self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
+        self._on_downloads_stopped()
         self._cleanup_bg_metadata()
 
     def _choose_dir(self):
@@ -407,6 +438,38 @@ class Step4DownloadsWidget(QWidget):
         )
         if d:
             self.lbl_dir.setText(d)
+
+    def _on_retry_limit(self, message: str):
+        if self._nightly_prompt_shown:
+            return
+        self._nightly_prompt_shown = True
+        try:
+            details = message or "Downloads are still failing after multiple retries."
+            details += (
+                "\n\nSwitching yt-dlp to the nightly branch can resolve recent site changes."
+                "\nWould you like to switch now?"
+            )
+            resp = QMessageBox.question(
+                self,
+                "Consider yt-dlp nightly",
+                details,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if resp == QMessageBox.StandardButton.Yes:
+                try:
+                    ytdlp_settings = getattr(self.settings, "ytdlp", None)
+                    if ytdlp_settings is not None and self.settings is not None:
+                        setattr(ytdlp_settings, "branch", "nightly")
+                        self.settings_mgr.save(self.settings)
+                        QMessageBox.information(
+                            self,
+                            "Nightly branch enabled",
+                            "Future yt-dlp updates will use the nightly build.",
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _on_item_status(self, idx: int, text: str):
         w = self._get_widget(idx)
@@ -552,6 +615,10 @@ class Step4DownloadsWidget(QWidget):
             self.btn_done.setVisible(not auto_reset)
         except Exception:
             pass
+        try:
+            self.allFinished.emit()
+        except Exception:
+            pass
 
     def _done_clicked(self):
         # Parent will decide behavior, here we just reset the list UI
@@ -566,6 +633,7 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setText("Start")
         self.btn_start.setEnabled(False)
         self.btn_done.setVisible(False)
+        self._nightly_prompt_shown = False
 
         # Clear thumbnail threads
         for worker in self._thumb_threads:

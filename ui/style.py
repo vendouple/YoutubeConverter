@@ -358,7 +358,7 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
 
     def theme_qss(self, mode: str) -> str:
         """Compose full application QSS for the given theme mode.
-        mode: 'light' | 'dark' | 'oled' | 'system'
+        mode: 'light' | 'dark' | 'oled'
         """
         base = self.qss()
         ac = self._accent
@@ -711,7 +711,8 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             QPushButton#CompactButton {{ background: #111111; border: 1px solid #343a40; border-radius: 6px; padding: 4px 10px; min-height: 20px; font-size: 12px; color: #f8f9fa; }}
             QPushButton#CompactButton:hover {{ border-color: {ac}; background: #1a1a1a; }}
             """
-        elif mode == "dark":
+        else:
+            # Default dark theme (also used as fallback)
             extra = f"""
             /* Dark theme */
             QWidget {{ background: #1c1d20; color: #f0f0f0; }}
@@ -794,31 +795,6 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             QListView, QListWidget {{ background: #1e1f22; border: 1px solid #2d2f33; border-radius: 8px; }}
             QListView::item:hover, QListWidget::item:hover {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); }}
             QListView::item:selected, QListWidget::item:selected {{ background: {ac}; color: #ffffff; border: 1px solid {ac}; }}
-            """
-        else:  # system
-            extra = f"""
-            /* System theme (glass-like) */
-            QWidget {{ background: #f6f7fb; color: #1f2937; }}
-            QFrame#CategoryCard, .CategoryCard {{ background: rgba(255,255,255,0.6); border: 1px solid #d1d5db; border-radius: 14px; backdrop-filter: blur(12px); }}
-            QListView, QListWidget {{ background: rgba(255,255,255,0.8); border: 1px solid #d1d5db; border-radius: 8px; backdrop-filter: blur(12px); }}
-            QComboBox::drop-down {{ background: rgba(255,255,255,0.7); border-left-color: #cccccc; }}
-            QComboBox::down-arrow {{ border-top-color: #4b5563; }}
-            QComboBox::down-arrow:hover {{ border-top-color: {ac}; }}
-            QSpinBox::up-button, QSpinBox::down-button {{ background: rgba(255,255,255,0.7); border-color: #cccccc; }}
-            /* Stepper */
-            #StepperLabel {{ background: rgba(255,255,255,0.6); border: 1px solid #d1d5db; color: #1f2937; }}
-            #StepperLabel[current=\"true\"] {{ border-color: {ac}; color: {ac}; }}
-            /* Update prompt */
-            QTextBrowser#ChangelogBrowser {{ background: rgba(255,255,255,0.8); border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; color: #1f2937; backdrop-filter: blur(12px); }}
-            QPushButton#SecondaryButton {{ background: rgba(255,255,255,0.7); border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 12px; color: #1f2937; }}
-            QPushButton#SecondaryButton:hover {{ border-color: {ac}; background: rgba(255,255,255,0.8); }}
-            /* Add multiple button */
-            QCheckBox#ButtonLike {{ background: rgba(255,255,255,0.7); border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px; color: #1f2937; }}
-            QCheckBox#ButtonLike:hover {{ border-color: {ac}; background: rgba(255,255,255,0.8); }}
-            QCheckBox#ButtonLike:checked {{ border-color: {ac}; background: rgba(255,255,255,0.9); color: {ac}; }}
-            /* Compact buttons */
-            QPushButton#CompactButton {{ background: rgba(255,255,255,0.7); border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 10px; min-height: 20px; font-size: 12px; color: #1f2937; }}
-            QPushButton#CompactButton:hover {{ border-color: {ac}; background: rgba(255,255,255,0.8); }}
             """
 
         return base + "\n" + extra

@@ -964,6 +964,8 @@ class MainWindow(QMainWindow):
             # Ensure unified flag exists (legacy mapping handled in SettingsManager.load)
             if not hasattr(ui, "auto_clear_on_success"):
                 setattr(ui, "auto_clear_on_success", True)
+            if not hasattr(ui, "verify_existing_downloads"):
+                setattr(ui, "verify_existing_downloads", False)
             if not hasattr(app, "check_on_launch"):
                 setattr(app, "check_on_launch", False)
             if not hasattr(app, "auto_reset_after_downloads"):
@@ -971,7 +973,14 @@ class MainWindow(QMainWindow):
             if not hasattr(app, "notifications_detail"):
                 setattr(app, "notifications_detail", "detailed")
             if not hasattr(ui, "theme_mode"):
-                setattr(ui, "theme_mode", "system")  # system|light|dark|oled
+                setattr(ui, "theme_mode", "dark")  # light|dark|oled
+            else:
+                try:
+                    mode = str(getattr(ui, "theme_mode", "")).strip().lower()
+                    if mode == "system" or not mode:
+                        setattr(ui, "theme_mode", "dark")
+                except Exception:
+                    setattr(ui, "theme_mode", "dark")
             if not hasattr(self.settings, "ez"):
                 setattr(
                     self.settings,
@@ -1000,7 +1009,9 @@ class MainWindow(QMainWindow):
 
     # Apply theme stylesheet variants (now delegated to StyleManager)
     def _apply_theme(self):
-        mode = getattr(self.settings.ui, "theme_mode", "system")
+        mode = str(getattr(self.settings.ui, "theme_mode", "dark") or "dark").lower()
+        if mode not in {"light", "dark", "oled"}:
+            mode = "dark"
         accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28")
         # Ensure StyleManager has the current accent
         self.style_mgr.with_accent(accent)

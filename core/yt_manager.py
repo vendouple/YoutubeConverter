@@ -253,6 +253,7 @@ class Downloader(QThread):
     finished_all = pyqtSignal()
     # Announce final file for item when available
     itemFileReady = pyqtSignal(int, str)
+    retryLimitReached = pyqtSignal(str)
 
     def __init__(
         self,
@@ -262,6 +263,7 @@ class Downloader(QThread):
         fmt: str,
         ffmpeg_location: Optional[str] = None,
         quality: Optional[str] = None,
+        verify_existing: bool = False,
     ):
         super().__init__()
         self.items = items
@@ -270,11 +272,13 @@ class Downloader(QThread):
         self.fmt = fmt
         self.ffmpeg_location = ffmpeg_location
         self.quality = quality or "best"
+        self.verify_existing = verify_existing
         self._pause_evt = Event()
         self._pause_evt.set()
         self._stop = False
         self._meta_threads: Dict[int, InfoFetcher] = {}
         self._dl_filename: Dict[int, str] = {}
+        self.max_retries = 3
 
     def pause(self):
         self._pause_evt.clear()
@@ -337,7 +341,8 @@ class Downloader(QThread):
             vid = str(it.get("id") or "").strip()
             if not vid:
                 return p
-            import glob, time
+            import glob
+            import time
 
             candidates = glob.glob(os.path.join(self.base_dir, f"*[{vid}].*"))
             if not candidates:
@@ -358,6 +363,37 @@ class Downloader(QThread):
             return max(candidates, key=lambda fp: os.path.getmtime(fp))
         except Exception:
             return self._dl_filename.get(idx)
+
+    def _existing_output_file(self, idx: int, kind: str, fmt: str) -> str | None:
+        try:
+            it = self.items[idx] or {}
+            vid = str(it.get("id") or "").strip()
+            if not vid:
+                return None
+            import glob
+            import time
+
+            candidates = glob.glob(os.path.join(self.base_dir, f"*[{vid}].*"))
+            if not candidates:
+                return None
+            valid = [
+                c
+                for c in candidates
+                if not c.lower().endswith((".part", ".ytdl", ".temp", ".tmp"))
+            ]
+            if not valid:
+                return None
+            if kind == "audio" and fmt:
+                pref = [c for c in valid if c.lower().endswith(f".{fmt.lower()}")]
+                if pref:
+                    return max(pref, key=lambda fp: os.path.getmtime(fp))
+            if kind == "video" and fmt:
+                pref = [c for c in valid if c.lower().endswith(f".{fmt.lower()}")]
+                if pref:
+                    return max(pref, key=lambda fp: os.path.getmtime(fp))
+            return max(valid, key=lambda fp: os.path.getmtime(fp))
+        except Exception:
+            return None
 
     # Build CLI args for yt-dlp binary to mirror Python options
     def _build_cli_args(
@@ -471,7 +507,7 @@ class Downloader(QThread):
         qual: str,
         sb_enabled: bool,
         sb_cats: List[str],
-    ) -> bool:
+    ) -> tuple[bool, Optional[str]]:
         try:
             args = self._build_cli_args(
                 url,
@@ -507,7 +543,7 @@ class Downloader(QThread):
                     except Exception:
                         pass
                     self.itemStatus.emit(idx, "Stopped")
-                    return False
+                    return False, "Stopped"
                 if not line:
                     continue
 
@@ -531,16 +567,77 @@ class Downloader(QThread):
 
             code = proc.wait()
             if code != 0:
-                self.itemStatus.emit(idx, f"Error: yt-dlp failed (code {code})")
-                return False
+                err = f"yt-dlp failed (code {code})"
+                self.itemStatus.emit(idx, f"Error: {err}")
+                return False, err
 
             if not self._stop:
                 self.itemProgress.emit(idx, 100.0, 0.0, 0)
                 self.itemStatus.emit(idx, "Done")
-            return True
+            return True, None
         except Exception as e:
             self.itemStatus.emit(idx, f"Error: {e}")
-            return False
+            return False, str(e)
+
+    def _attempt_download(
+        self,
+        idx: int,
+        url: str,
+        kind: str,
+        fmt: str,
+        qual: str,
+        sb_enabled: bool,
+        sb_cats: List[str],
+    ) -> tuple[bool, Optional[str]]:
+        last_error: Optional[str] = None
+        binary_exists = os.path.exists(YTDLP_EXE)
+
+        if binary_exists:
+            ok, err = self._download_with_binary(
+                idx, url, kind, fmt, qual, sb_enabled, sb_cats
+            )
+            if ok:
+                try:
+                    fp = self._resolve_output_file(idx, kind, fmt)
+                    if fp:
+                        self.itemFileReady.emit(idx, fp)
+                except Exception:
+                    pass
+                return True, None
+            last_error = err
+            if self._stop:
+                return False, err or "Stopped"
+
+        opts = build_ydl_opts(
+            self.base_dir,
+            kind,
+            fmt,
+            self.ffmpeg_location,
+            self._hook_builder(idx),
+            qual,
+            sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
+            sponsorblock_api=("https://sponsor.ajay.app" if sb_enabled else None),
+        )
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+            if not self._stop:
+                self.itemProgress.emit(idx, 100.0, 0.0, 0)
+                self.itemStatus.emit(idx, "Done")
+                try:
+                    fp = self._resolve_output_file(idx, kind, fmt)
+                    if fp:
+                        self.itemFileReady.emit(idx, fp)
+                except Exception:
+                    pass
+            return True, None
+        except Exception as e:
+            err = str(e) or last_error or "Unknown error"
+            if self._stop:
+                self.itemStatus.emit(idx, "Stopped")
+                return False, "Stopped"
+            self.itemStatus.emit(idx, f"Error: {err}")
+            return False, err
 
     def run(self):
         # Throttle initial thumbnail fetching to avoid overwhelming requests
@@ -583,6 +680,17 @@ class Downloader(QThread):
             ).strip()
             qual = (it.get("desired_quality") or self.quality or "best").strip()
 
+            if self.verify_existing:
+                existing = self._existing_output_file(idx, kind, fmt)
+                if existing and os.path.exists(existing):
+                    self.itemProgress.emit(idx, 100.0, 0.0, 0)
+                    self.itemStatus.emit(idx, "Already downloaded")
+                    try:
+                        self.itemFileReady.emit(idx, existing)
+                    except Exception:
+                        pass
+                    continue
+
             # SponsorBlock settings
             sb_enabled = bool(it.get("sb_enabled"))
             sb_cats = [
@@ -597,47 +705,39 @@ class Downloader(QThread):
                 # print(f"Warning: yt-dlp binary not found at {YTDLP_EXE}, falling back to Python API")
                 pass
 
-            if binary_exists:
-                ok = self._download_with_binary(
+            last_error: Optional[str] = None
+            success = False
+            for attempt in range(self.max_retries + 1):
+                if self._stop:
+                    break
+                if attempt == 0:
+                    self.itemStatus.emit(idx, "Starting...")
+                else:
+                    self.itemStatus.emit(
+                        idx, f"Retrying ({attempt}/{self.max_retries})…"
+                    )
+                    QThread.msleep(350)
+                success, err = self._attempt_download(
                     idx, url, kind, fmt, qual, sb_enabled, sb_cats
                 )
-                if ok:
-                    try:
-                        fp = self._resolve_output_file(idx, kind, fmt)
-                        if fp:
-                            self.itemFileReady.emit(idx, fp)
-                    except Exception:
-                        pass
-                    continue  # success; next item
-
-            # Fallback to Python API (keep SB enabled here too)
-            opts = build_ydl_opts(
-                self.base_dir,
-                kind,
-                fmt,
-                self.ffmpeg_location,
-                self._hook_builder(idx),
-                qual,
-                sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
-                sponsorblock_api=("https://sponsor.ajay.app" if sb_enabled else None),
-            )
-            # Debug: printing rate/ETA (disabled in production)
-            # print(f"yt-dlp options for item {idx}: SB={sb_enabled}, formats={opts.get('format')}")
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([url])
-                if not self._stop:
-                    self.itemProgress.emit(idx, 100.0, 0.0, 0)
-                    self.itemStatus.emit(idx, "Done")
-                    try:
-                        fp = self._resolve_output_file(idx, kind, fmt)
-                        if fp:
-                            self.itemFileReady.emit(idx, fp)
-                    except Exception:
-                        pass
-            except Exception as e:
-                if self._stop:
-                    self.itemStatus.emit(idx, "Stopped")
+                if success:
                     break
-                self.itemStatus.emit(idx, f"Error: {e}")
-        self.finished_all.emit()
+                last_error = err
+
+            if self._stop:
+                break
+
+            if not success:
+                if self._stop:
+                    break
+                err_text = last_error or "Download failed"
+                self.itemStatus.emit(idx, f"Failed: {err_text}")
+                try:
+                    title = (it or {}).get("title") or "This download"
+                    self.retryLimitReached.emit(
+                        f"{title} failed after {self.max_retries} retries.\nError: {err_text}"
+                    )
+                except Exception:
+                    pass
+        if not self._stop:
+            self.finished_all.emit()
