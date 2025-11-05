@@ -1,4 +1,4 @@
-from PyQt6.QtCore import pyqtSignal, Qt, QEvent
+from PyQt6.QtCore import pyqtSignal, Qt, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -9,10 +9,81 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QPushButton,
     QFrame,
+    QLineEdit,
+    QScrollArea,
 )
 
 from core.settings import AppSettings
 from core.models import UpdateCadence, UpdateAction
+
+
+class CollapsibleSection(QWidget):
+    """A collapsible section widget for organizing settings."""
+
+    def __init__(self, title: str, description: str = "", parent=None):
+        super().__init__(parent)
+        self.is_collapsed = False
+
+        # Main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Header (clickable)
+        self.header = QFrame()
+        self.header.setObjectName("CollapsibleHeader")
+        self.header.setCursor(Qt.CursorShape.PointingHandCursor)
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(18, 14, 18, 14)
+
+        # Title and description
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(4)
+
+        self.title_label = QLabel(title)
+        self.title_label.setStyleSheet("font-size:18px; font-weight:600;")
+        text_layout.addWidget(self.title_label)
+
+        if description:
+            self.desc_label = QLabel(description)
+            self.desc_label.setWordWrap(True)
+            self.desc_label.setProperty("role", "caption")
+            text_layout.addWidget(self.desc_label)
+
+        header_layout.addLayout(text_layout, 1)
+
+        # Collapse/expand icon
+        self.toggle_icon = QLabel("▼")
+        self.toggle_icon.setStyleSheet("font-size: 14px;")
+        header_layout.addWidget(self.toggle_icon)
+
+        main_layout.addWidget(self.header)
+
+        # Content container
+        self.content_frame = QFrame()
+        self.content_frame.setObjectName("CategoryCard")
+        self.content_layout = QVBoxLayout(self.content_frame)
+        self.content_layout.setContentsMargins(18, 14, 18, 14)
+        self.content_layout.setSpacing(8)
+
+        main_layout.addWidget(self.content_frame)
+
+        # Enable mouse click on header
+        self.header.mousePressEvent = lambda e: self.toggle_collapse()
+
+    def toggle_collapse(self):
+        """Toggle the collapsed state."""
+        self.is_collapsed = not self.is_collapsed
+        self.content_frame.setVisible(not self.is_collapsed)
+        self.toggle_icon.setText("▶" if self.is_collapsed else "▼")
+
+    def add_widget(self, widget: QWidget):
+        """Add a widget to the content area."""
+        self.content_layout.addWidget(widget)
+
+    def add_layout(self, layout):
+        """Add a layout to the content area."""
+        self.content_layout.addLayout(layout)
 
 
 class SettingsPage(QWidget):
@@ -27,32 +98,65 @@ class SettingsPage(QWidget):
     def __init__(self, settings: AppSettings):
         super().__init__()
         self._settings = settings
+        self._all_sections = []  # Track all sections for search/filter
 
         self.setStyleSheet("")
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
+        # Main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(16)
+
+        # Search and filter bar
+        search_layout = QHBoxLayout()
+
+        # Search box
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("🔍 Search settings...")
+        self.search_box.textChanged.connect(self._on_search_changed)
+        self.search_box.setStyleSheet(
+            """
+            QLineEdit {
+                padding: 8px 12px;
+                border-radius: 8px;
+                font-size: 13px;
+            }
+        """
+        )
+        search_layout.addWidget(self.search_box, 1)
+
+        # Filter dropdown
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems(
+            ["All Settings", "Interface", "Downloads", "Updates", "Advanced"]
+        )
+        self.filter_combo.currentTextChanged.connect(self._on_filter_changed)
+        self.filter_combo.setStyleSheet("padding: 6px 12px; min-width: 120px;")
+        search_layout.addWidget(self.filter_combo)
+
+        main_layout.addLayout(search_layout)
+
+        # Settings content area
+        self.settings_content = QWidget()
+        root = QVBoxLayout(self.settings_content)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(20)
 
-        def card(title: str, desc: str) -> QVBoxLayout:
-            frame = QFrame()
-            frame.setObjectName("CategoryCard")
-            frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-            lay = QVBoxLayout(frame)
-            lay.setContentsMargins(18, 14, 18, 14)
-            lay.setSpacing(8)
-            lbl_t = QLabel(title)
-            lbl_t.setStyleSheet("font-size:18px; font-weight:600;")
-            lbl_d = QLabel(desc)
-            lbl_d.setWordWrap(True)
-            lbl_d.setProperty("role", "caption")
-            lay.addWidget(lbl_t)
-            lay.addWidget(lbl_d)
-            root.addWidget(frame)
-            return lay
+        # Helper function to create collapsible sections
+        def collapsible_section(
+            title: str, desc: str, category: str = "Advanced"
+        ) -> CollapsibleSection:
+            section = CollapsibleSection(title, desc)
+            section.setProperty("category", category)
+            section.setProperty("searchText", f"{title} {desc}".lower())
+            self._all_sections.append(section)
+            root.addWidget(section)
+            return section
 
         # Appearance
-        lay_app = card("Appearance", "Theme, accent color and general UI behavior.")
+        section_app = collapsible_section(
+            "Appearance", "Theme, accent color and general UI behavior.", "Interface"
+        )
         row_theme = QHBoxLayout()
         row_theme.addWidget(QLabel("Theme:"))
         self.cmb_theme = QComboBox()
@@ -62,24 +166,24 @@ class SettingsPage(QWidget):
         mode_to_index = {name.lower(): idx for idx, name in enumerate(theme_options)}
         self.cmb_theme.setCurrentIndex(mode_to_index.get(cur_mode, 0))
         row_theme.addWidget(self.cmb_theme, 1)
-        lay_app.addLayout(row_theme)
+        section_app.add_layout(row_theme)
         btn_accent = QPushButton("Pick accent color")
         btn_accent.setObjectName("CompactButton")
         btn_accent.clicked.connect(self.accentPickRequested.emit)
-        lay_app.addWidget(btn_accent)
+        section_app.add_widget(btn_accent)
         self.chk_auto_clear_success = QCheckBox("Auto clear finished downloads")
         self.chk_auto_clear_success.setChecked(settings.ui.auto_clear_on_success)
-        lay_app.addWidget(self.chk_auto_clear_success)
+        section_app.add_widget(self.chk_auto_clear_success)
 
         # Search & Input
-        lay_search = card(
-            "Search & Input", "Controls how text input triggers searches."
+        section_search = collapsible_section(
+            "Search & Input", "Controls how text input triggers searches.", "Interface"
         )
         self.chk_auto_search_text = QCheckBox("Auto search while typing")
         self.chk_auto_search_text.setChecked(
             getattr(settings.ui, "auto_search_text", True)
         )
-        lay_search.addWidget(self.chk_auto_search_text)
+        section_search.add_widget(self.chk_auto_search_text)
         row_db = QHBoxLayout()
         row_db.addWidget(QLabel("Search debounce (s):"))
         self.spn_search_debounce = QSpinBox()
@@ -88,24 +192,27 @@ class SettingsPage(QWidget):
             int(getattr(settings.ui, "search_debounce_seconds", 3))
         )
         row_db.addWidget(self.spn_search_debounce)
-        lay_search.addLayout(row_db)
+        section_search.add_layout(row_db)
 
         # Downloads
-        lay_dl = card("Downloads", "Workflow preferences for post-completion behavior.")
+        section_dl = collapsible_section(
+            "Downloads",
+            "Workflow preferences for post-completion behavior.",
+            "Downloads",
+        )
         self.chk_auto_reset_after = QCheckBox("Reset wizard after all downloads")
         self.chk_auto_reset_after.setChecked(
             getattr(settings.app, "auto_reset_after_downloads", True)
         )
-        lay_dl.addWidget(self.chk_auto_reset_after)
-        self.chk_verify_existing = QCheckBox("Skip downloading files that are already complete")
-        self.chk_verify_existing.setChecked(
-            getattr(settings.ui, "verify_existing_downloads", False)
-        )
-        lay_dl.addWidget(self.chk_verify_existing)
+        section_dl.add_widget(self.chk_auto_reset_after)
 
         # Notifications
-        lay_notif = card("Notifications", "Toast notification verbosity level. (WIP, Doesnt work yet)")
-        lay_notif.addWidget(QLabel("Notification detail level:"))
+        section_notif = collapsible_section(
+            "Notifications",
+            "Toast notification verbosity level. (WIP, Doesnt work yet)",
+            "Interface",
+        )
+        section_notif.add_widget(QLabel("Notification detail level:"))
         self.cmb_notif = QComboBox()
         self.cmb_notif.addItems(["Detailed", "Minimal", "None"])
         self.cmb_notif.setCurrentIndex(
@@ -113,12 +220,13 @@ class SettingsPage(QWidget):
                 getattr(settings.app, "notifications_detail", "detailed").lower(), 0
             )
         )
-        lay_notif.addWidget(self.cmb_notif)
+        section_notif.add_widget(self.cmb_notif)
 
         # Updates (schedule-based)
-        lay_updates = card(
+        section_updates = collapsible_section(
             "Updates",
             "Control how the app and yt-dlp update: schedule, channels, and behavior.",
+            "Updates",
         )
         sched_map = {"off": 0, "launch": 1, "daily": 2, "weekly": 3, "monthly": 4}
 
@@ -176,7 +284,7 @@ class SettingsPage(QWidget):
         row_y_btn.addWidget(self.btn_check_ytdlp)
         y_lay.addLayout(row_y_btn)
 
-        lay_updates.addWidget(y_section)
+        section_updates.add_widget(y_section)
 
         # App subsection
         a_section = QFrame()
@@ -247,19 +355,21 @@ class SettingsPage(QWidget):
         row_a_btn.addWidget(self.btn_check_app)
         a_lay.addLayout(row_a_btn)
 
-        lay_updates.addWidget(a_section)
+        section_updates.add_widget(a_section)
 
         # EZ Mode
-        lay_ez = card("EZ Mode", "Simplify interface for quick single-link downloads.")
+        section_ez = collapsible_section(
+            "EZ Mode", "Simplify interface for quick single-link downloads.", "Advanced"
+        )
         self.chk_ez_simple = QCheckBox("Simple paste mode")
         self.chk_ez_simple.setChecked(settings.ez.simple_paste_mode)
-        lay_ez.addWidget(self.chk_ez_simple)
+        section_ez.add_widget(self.chk_ez_simple)
         self.chk_ez_sanitize = QCheckBox("Sanitize radio/mix links")
         self.chk_ez_sanitize.setChecked(settings.ez.sanitize_radio_links)
-        lay_ez.addWidget(self.chk_ez_sanitize)
+        section_ez.add_widget(self.chk_ez_sanitize)
         self.chk_ez_hide_adv = QCheckBox("Hide advanced quality options")
         self.chk_ez_hide_adv.setChecked(settings.ez.hide_advanced_quality)
-        lay_ez.addWidget(self.chk_ez_hide_adv)
+        section_ez.add_widget(self.chk_ez_hide_adv)
 
         # Placeholder container referenced by tests (hidden when EZ simple enabled)
         self.advanced_quality_container = QFrame()
@@ -278,24 +388,36 @@ class SettingsPage(QWidget):
         self.chk_ez_simple.toggled.connect(_sync_ez)
 
         # Maintenance
-        lay_maint = card("Maintenance", "Log management and diagnostics.")
+        section_maint = collapsible_section(
+            "Maintenance", "Log management and diagnostics.", "Advanced"
+        )
         btn_logs = QPushButton("Clear all logs")
         btn_logs.setObjectName("CompactButton")
         btn_logs.clicked.connect(self.clearLogsRequested.emit)
-        lay_maint.addWidget(btn_logs)
+        section_maint.add_widget(btn_logs)
         btn_export = QPushButton("Export logs (zip)")
         btn_export.setObjectName("CompactButton")
         btn_export.clicked.connect(self.exportLogsRequested.emit)
-        lay_maint.addWidget(btn_export)
+        section_maint.add_widget(btn_export)
 
         # Help / FAQ
-        lay_help = card("Help", "Find answers to common questions.")
+        section_help = collapsible_section(
+            "Help", "Find answers to common questions.", "Advanced"
+        )
         btn_faq = QPushButton("Open FAQ")
         btn_faq.setObjectName("CompactButton")
         btn_faq.clicked.connect(self.openFaqRequested.emit)
-        lay_help.addWidget(btn_faq)
+        section_help.add_widget(btn_faq)
 
         root.addStretch(1)
+
+        # Add scrollable content area to main layout
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.settings_content)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        main_layout.addWidget(scroll)
 
         # Block scroll-wheel on unfocused inputs
         self._wheel_block_targets = []
@@ -329,7 +451,6 @@ class SettingsPage(QWidget):
             self.chk_auto_search_text,
             self.spn_search_debounce,
             self.chk_auto_reset_after,
-            self.chk_verify_existing,
             self.cmb_notif,
             self.cmb_ytdlp_schedule,
             self.cmb_app_schedule,
@@ -377,7 +498,6 @@ class SettingsPage(QWidget):
         settings.ui.auto_search_text = self.chk_auto_search_text.isChecked()
         settings.ui.search_debounce_seconds = int(self.spn_search_debounce.value())
         settings.app.auto_reset_after_downloads = self.chk_auto_reset_after.isChecked()
-        settings.ui.verify_existing_downloads = self.chk_verify_existing.isChecked()
         settings.app.notifications_detail = self.cmb_notif.currentText().lower()
         rev_sched = {0: "off", 1: "launch", 2: "daily", 3: "weekly", 4: "monthly"}
         # Update unified configs first
@@ -443,3 +563,29 @@ class SettingsPage(QWidget):
         else:
             settings.ez.sanitize_radio_links = self.chk_ez_sanitize.isChecked()
         settings.ez.hide_advanced_quality = self.chk_ez_hide_adv.isChecked()
+
+    def _on_search_changed(self, text: str):
+        """Filter settings sections based on search text."""
+        search_text = text.lower().strip()
+
+        for section in self._all_sections:
+            # Get section's searchable text
+            section_text = section.property("searchText") or ""
+
+            # Show/hide based on search match
+            if not search_text or search_text in section_text:
+                section.setVisible(True)
+            else:
+                section.setVisible(False)
+
+    def _on_filter_changed(self, filter_text: str):
+        """Filter settings sections based on category."""
+        if filter_text == "All Settings":
+            # Show all sections
+            for section in self._all_sections:
+                section.setVisible(True)
+        else:
+            # Show only matching category
+            for section in self._all_sections:
+                category = section.property("category") or "Advanced"
+                section.setVisible(category == filter_text)

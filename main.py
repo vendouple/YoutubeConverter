@@ -356,18 +356,33 @@ class MainWindow(QMainWindow):
         # Remove focus outline on icon buttons
         self.btn_home.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        self.btn_youtube = QPushButton("📺")
+        self.btn_youtube.setToolTip("YouTube Download")
+        self.btn_youtube.setObjectName("IconButton")
+        self.btn_youtube.setFixedSize(48, 48)
+        self.btn_youtube.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        lay.addWidget(self.btn_home)
+        lay.addWidget(self.btn_youtube)
+        lay.addStretch(1)
+
+        # Settings at the bottom
         self.btn_settings = QPushButton("⚙️")
         self.btn_settings.setToolTip("Settings")
         self.btn_settings.setObjectName("IconButton")
         self.btn_settings.setFixedSize(48, 48)
         self.btn_settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        lay.addWidget(self.btn_home)
         lay.addWidget(self.btn_settings)
-        lay.addStretch(1)
+
         return side
 
     def _build_pages(self):
+        # Home page
+        from widgets.home_page import HomePage
+
+        self.home_page = HomePage()
+
+        # YouTube download flow
         self.page_flow = QWidget()
         flow_layout = QVBoxLayout(self.page_flow)
         flow_layout.setContentsMargins(0, 0, 0, 0)
@@ -399,12 +414,17 @@ class MainWindow(QMainWindow):
             "QScrollArea > QWidget > QWidget { background: transparent; }"
         )
 
+        self.stack.addWidget(self.home_page)
         self.stack.addWidget(self.page_flow)
         self.stack.addWidget(self.settings_scroll)
 
     def _wire_signals(self):
-        self.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        self.btn_settings.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+        self.btn_home.clicked.connect(self._show_home)
+        self.btn_youtube.clicked.connect(self._show_youtube)
+        self.btn_settings.clicked.connect(self._show_settings)
+
+        # Home page
+        self.home_page.youtubeRequested.connect(self._show_youtube)
 
         # Step 1
         self.step1.urlDetected.connect(lambda _: self._refresh_stepper_titles())
@@ -418,6 +438,9 @@ class MainWindow(QMainWindow):
         # Step 3
         self.step4.allFinished.connect(self._on_downloads_finished)
         self.step4.backRequested.connect(self._back_from_step3)
+        self.step4.doneRequested.connect(self._on_done_requested)
+        self.step4.downloadsStarted.connect(lambda: self._lock_ui(True))
+        self.step4.downloadsStopped.connect(lambda: self._lock_ui(False))
 
         # Settings actions
         try:
@@ -572,6 +595,7 @@ class MainWindow(QMainWindow):
         # Always reset or hold per user preference
         auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
         if auto_reset:
+            # Auto-reset: go back to step 1
             self.step1.reset()
             try:
                 self.step4.reset()
@@ -579,8 +603,46 @@ class MainWindow(QMainWindow):
                 pass
             self.flow_stack.setCurrentIndex(0)
             self.stepper.set_current(0)
+        # If auto_reset is False, Done button will be shown in step4
+
+    def _on_done_requested(self):
+        # User clicked Done button when auto_reset is disabled
+        self.step1.reset()
+        self.flow_stack.setCurrentIndex(0)
+        self.stepper.set_current(0)
         # Notify
         self._toast("Downloads finished.")
+
+    def _show_home(self):
+        """Show home page and hide stepper"""
+        self.stack.setCurrentIndex(0)
+        self.stepper.setVisible(False)
+
+    def _show_youtube(self):
+        """Show YouTube download flow and display stepper"""
+        self.stack.setCurrentIndex(1)
+        self.stepper.setVisible(True)
+
+    def _show_settings(self):
+        """Show settings page and hide stepper"""
+        self.stack.setCurrentIndex(2)
+        self.stepper.setVisible(False)
+
+    def _lock_ui(self, lock: bool):
+        """Lock or unlock UI navigation during busy operations."""
+        try:
+            self.btn_home.setEnabled(not lock)
+            self.btn_youtube.setEnabled(not lock)
+            self.btn_settings.setEnabled(not lock)
+        except Exception:
+            pass
+
+        # Lock download location button during downloads
+        try:
+            if hasattr(self.step4, "btn_choose"):
+                self.step4.btn_choose.setEnabled(not lock)
+        except Exception:
+            pass
 
     def _pick_accent(self):
         from PyQt6.QtWidgets import QColorDialog
@@ -964,8 +1026,6 @@ class MainWindow(QMainWindow):
             # Ensure unified flag exists (legacy mapping handled in SettingsManager.load)
             if not hasattr(ui, "auto_clear_on_success"):
                 setattr(ui, "auto_clear_on_success", True)
-            if not hasattr(ui, "verify_existing_downloads"):
-                setattr(ui, "verify_existing_downloads", False)
             if not hasattr(app, "check_on_launch"):
                 setattr(app, "check_on_launch", False)
             if not hasattr(app, "auto_reset_after_downloads"):

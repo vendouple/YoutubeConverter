@@ -74,7 +74,6 @@ class UISettings:
     quality_refetch_seconds: int = 1
     background_metadata_enabled: bool = True
     auto_clear_on_success: bool = True
-    verify_existing_downloads: bool = False
     # Theme persistence
     theme_mode: str = "dark"  # light|dark|oled
 

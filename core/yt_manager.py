@@ -263,7 +263,6 @@ class Downloader(QThread):
         fmt: str,
         ffmpeg_location: Optional[str] = None,
         quality: Optional[str] = None,
-        verify_existing: bool = False,
     ):
         super().__init__()
         self.items = items
@@ -272,7 +271,6 @@ class Downloader(QThread):
         self.fmt = fmt
         self.ffmpeg_location = ffmpeg_location
         self.quality = quality or "best"
-        self.verify_existing = verify_existing
         self._pause_evt = Event()
         self._pause_evt.set()
         self._stop = False
@@ -295,6 +293,38 @@ class Downloader(QThread):
 
     def stop(self):
         self._stop = True
+        # Clean up partial download files
+        self._cleanup_partial_files()
+
+    def _cleanup_partial_files(self):
+        """Remove temporary/partial download files"""
+        try:
+            if not self.base_dir or not os.path.exists(self.base_dir):
+                return
+
+            # Extensions to clean up
+            temp_extensions = (".part", ".ytdl", ".temp", ".tmp", ".f*")
+
+            for filename in os.listdir(self.base_dir):
+                file_path = os.path.join(self.base_dir, filename)
+                # Skip directories
+                if os.path.isdir(file_path):
+                    continue
+
+                # Check if it's a temp file
+                is_temp = any(filename.lower().endswith(ext) for ext in temp_extensions)
+                # Also check for f-numbers (fragments)
+                is_temp = is_temp or (
+                    filename.startswith("f") and filename[1:].split(".")[0].isdigit()
+                )
+
+                if is_temp:
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _hook_builder(self, idx: int):
         def hook(d):
@@ -679,17 +709,6 @@ class Downloader(QThread):
                 or ("mp3" if kind == "audio" else "mp4")
             ).strip()
             qual = (it.get("desired_quality") or self.quality or "best").strip()
-
-            if self.verify_existing:
-                existing = self._existing_output_file(idx, kind, fmt)
-                if existing and os.path.exists(existing):
-                    self.itemProgress.emit(idx, 100.0, 0.0, 0)
-                    self.itemStatus.emit(idx, "Already downloaded")
-                    try:
-                        self.itemFileReady.emit(idx, existing)
-                    except Exception:
-                        pass
-                    continue
 
             # SponsorBlock settings
             sb_enabled = bool(it.get("sb_enabled"))

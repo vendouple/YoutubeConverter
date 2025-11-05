@@ -38,6 +38,9 @@ QWidget {{
     color: #f0f0f0;      /* lighter text for improved contrast */
     font-size: 13px;
 }}
+QLabel {{
+    background: transparent;
+}}
 QFrame#Sidebar {{
     background: #202125;
     border-right: 1px solid #2e2f33;
@@ -208,6 +211,7 @@ QSpinBox::down-arrow:hover {{
 /* Win11-like CheckBox (check mark box) */
 QCheckBox {{
     spacing: 6px; /* space between box and label */
+    background: transparent;
 }}
 QCheckBox::indicator {{
     width: 18px;
@@ -339,6 +343,31 @@ QGroupBox::title {{
     font-weight: 600;
 }}
 
+/* Home Page Cards */
+QFrame#FeatureCard {{
+    background: #24252a;
+    border: 1px solid #34353b;
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 220px;
+    max-width: 350px;
+    min-height: 220px;
+}}
+QFrame#FeatureCard:hover {{
+    border-color: {ac};
+    background: #2a2b30;
+}}
+QFrame#FeatureCard:disabled {{
+    opacity: 0.6;
+    border-color: #2a2b30;
+}}
+QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
+    background: transparent;
+}}
+QLabel#WelcomeTitle, QLabel#WelcomeSubtitle, QLabel#FeaturesHeader {{
+    background: transparent;
+}}
+
 /* Update prompt components */
 QTextBrowser#ChangelogBrowser {{
     background: #1e1f22; border: 1px solid #34353b; border-radius: 8px; padding: 8px;
@@ -354,6 +383,18 @@ QPushButton#CompactButton {{
     min-height: 20px; font-size: 12px;
 }}
 QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
+
+/* Collapsible Section Header */
+QFrame#CollapsibleHeader {{
+    background: #24252a;
+    border: 1px solid #34353b;
+    border-radius: 8px;
+    margin-bottom: 4px;
+}}
+QFrame#CollapsibleHeader:hover {{
+    background: #2a2b30;
+    border-color: {ac};
+}}
 """
 
     def theme_qss(self, mode: str) -> str:
@@ -366,6 +407,7 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             extra = f"""
             /* Light theme - Clean Windows 11 style */
             QWidget {{ background: #f7f8fa; color: #212529; }}
+            QLabel {{ background: transparent; }}
             QFrame#Sidebar {{ background: #eef0f3; border-right: 1px solid #d6dbe1; }}
             /* Flat Cards - No neuromorphic effects */
             QFrame#CategoryCard, .CategoryCard {{ 
@@ -469,7 +511,10 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
                 color: #ffffff;
             }}
             /* Checkboxes */
-            QCheckBox {{ color: #212529; }}
+            QCheckBox {{ 
+                color: #212529;
+                background: transparent;
+            }}
             QCheckBox::indicator {{ 
                 background: #ffffff; 
                 border: 2px solid #d6dbe1; 
@@ -627,11 +672,50 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             /* Compact buttons */
             QPushButton#CompactButton {{ background: #f3f4f6; border: 1px solid #d6dbe1; border-radius: 6px; padding: 4px 10px; min-height: 20px; font-size: 12px; color: #374151; }}
             QPushButton#CompactButton:hover {{ border-color: {ac}; background: #eef0f3; }}
+            
+            /* Collapsible Section Header - Light */
+            QFrame#CollapsibleHeader {{
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                margin-bottom: 4px;
+            }}
+            QFrame#CollapsibleHeader:hover {{
+                background: #f9fafb;
+                border-color: {ac};
+            }}
+            
+            /* Home Page Cards - Light */
+            QFrame#FeatureCard {{
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 20px;
+                min-width: 220px;
+                max-width: 350px;
+                min-height: 220px;
+            }}
+            QFrame#FeatureCard:hover {{
+                border-color: {ac};
+                background: #f9fafb;
+            }}
+            QFrame#FeatureCard:disabled {{
+                opacity: 0.6;
+                border-color: #e5e7eb;
+            }}
+            QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
+                background: transparent;
+            }}
+            QLabel#WelcomeTitle, QLabel#WelcomeSubtitle, QLabel#FeaturesHeader {{
+                background: transparent;
+            }}
             """
         elif mode == "oled":
             extra = f"""
             /* OLED theme - pure black */
             QWidget {{ background: #000000; color: #f8f9fa; }}
+            QLabel {{ background: transparent; }}
+            QCheckBox {{ background: transparent; }}
             QFrame#Sidebar {{ background: #000000; border-right: 1px solid #212529; }}
             /* Flat OLED Cards */
             QFrame#CategoryCard, .CategoryCard {{ 
@@ -791,6 +875,44 @@ QPushButton#CompactButton:hover {{ border-color: {ac}; background: #2c2d32; }}
             /* Compact buttons */
             QPushButton#CompactButton {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 10px; min-height: 20px; font-size: 12px; color: #e1e3e8; }}
             QPushButton#CompactButton:hover {{ border-color: {ac}; background: rgba(255,255,255,0.12); }}
+            
+            /* Collapsible Section Header - OLED */
+            QFrame#CollapsibleHeader {{
+                background: #0a0a0a;
+                border: 1px solid #212529;
+                border-radius: 8px;
+                margin-bottom: 4px;
+            }}
+            QFrame#CollapsibleHeader:hover {{
+                background: #111111;
+                border-color: {ac};
+            }}
+            
+            /* Home Page Cards - OLED */
+            QFrame#FeatureCard {{
+                background: #0a0a0a;
+                border: 1px solid #212529;
+                border-radius: 12px;
+                padding: 20px;
+                min-width: 220px;
+                max-width: 350px;
+                min-height: 220px;
+            }}
+            QFrame#FeatureCard:hover {{
+                border-color: {ac};
+                background: #111111;
+            }}
+            QFrame#FeatureCard:disabled {{
+                opacity: 0.6;
+                border-color: #1a1a1a;
+            }}
+            QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
+                background: transparent;
+            }}
+            QLabel#WelcomeTitle, QLabel#WelcomeSubtitle, QLabel#FeaturesHeader {{
+                background: transparent;
+            }}
+            
             /* Lists */
             QListView, QListWidget {{ background: #1e1f22; border: 1px solid #2d2f33; border-radius: 8px; }}
             QListView::item:hover, QListWidget::item:hover {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); }}
