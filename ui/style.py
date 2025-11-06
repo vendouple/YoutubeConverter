@@ -358,8 +358,9 @@ QFrame#FeatureCard:hover {{
     background: #2a2b30;
 }}
 QFrame#FeatureCard:disabled {{
-    opacity: 0.6;
-    border-color: #2a2b30;
+    opacity: 0.5;
+    border: 2px solid #3a3b41;
+    background: #1a1b1e;
 }}
 QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
     background: transparent;
@@ -700,8 +701,9 @@ QFrame#CollapsibleHeader:hover {{
                 background: #f9fafb;
             }}
             QFrame#FeatureCard:disabled {{
-                opacity: 0.6;
-                border-color: #e5e7eb;
+                opacity: 0.5;
+                border: 2px solid #d1d5db;
+                background: #f3f4f6;
             }}
             QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
                 background: transparent;
@@ -903,8 +905,9 @@ QFrame#CollapsibleHeader:hover {{
                 background: #111111;
             }}
             QFrame#FeatureCard:disabled {{
-                opacity: 0.6;
-                border-color: #1a1a1a;
+                opacity: 0.5;
+                border: 2px solid #2a2a2a;
+                background: #050505;
             }}
             QLabel#CardIcon, QLabel#CardTitle, QLabel#CardDescription {{
                 background: transparent;

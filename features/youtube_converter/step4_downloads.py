@@ -429,7 +429,7 @@ class Step4DownloadsWidget(QWidget):
         # Check for file conflicts before starting download
         conflicts = self._check_file_conflicts(base)
         if conflicts:
-            from widgets.file_conflict_dialog import FileConflictDialog
+            from features.general.file_conflict_dialog import FileConflictDialog
 
             dialog = FileConflictDialog(conflicts, self)
             if dialog.exec() == dialog.DialogCode.Accepted:
@@ -472,6 +472,9 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setEnabled(True)
         self.btn_stop.setVisible(True)  # Show Stop once started
         self.btn_stop.setEnabled(True)
+        
+        # Disable Back button during downloads
+        self.btn_back.setEnabled(False)
 
         # Emit signal to lock UI
         try:
@@ -494,6 +497,9 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setEnabled(bool(self.items))
         self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
+        
+        # Re-enable Back button after stopping
+        self.btn_back.setEnabled(True)
 
         # Emit signal to unlock UI
         try:

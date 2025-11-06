@@ -127,9 +127,7 @@ class SettingsPage(QWidget):
 
         # Filter dropdown
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(
-            ["All Settings", "Interface", "Downloads", "Updates", "Advanced"]
-        )
+        self.filter_combo.addItems(["All Settings", "YouTube Converter", "General"])
         self.filter_combo.currentTextChanged.connect(self._on_filter_changed)
         self.filter_combo.setStyleSheet("padding: 6px 12px; min-width: 120px;")
         search_layout.addWidget(self.filter_combo)
@@ -144,7 +142,7 @@ class SettingsPage(QWidget):
 
         # Helper function to create collapsible sections
         def collapsible_section(
-            title: str, desc: str, category: str = "Advanced"
+            title: str, desc: str, category: str = "General"
         ) -> CollapsibleSection:
             section = CollapsibleSection(title, desc)
             section.setProperty("category", category)
@@ -153,9 +151,90 @@ class SettingsPage(QWidget):
             root.addWidget(section)
             return section
 
-        # Appearance
+        # ===== YOUTUBE CONVERTER SETTINGS =====
+        # Main category header
+        youtube_header = QLabel("📺 YouTube Converter Settings")
+        youtube_header.setStyleSheet(
+            "font-size: 22px; font-weight: 700; margin-top: 8px; margin-bottom: 4px;"
+        )
+        youtube_header.setProperty("category", "YouTube Converter")
+        self._all_sections.append(youtube_header)
+        root.addWidget(youtube_header)
+
+        # Downloads subcategory
+        section_dl = collapsible_section(
+            "Downloads",
+            "Workflow preferences for post-completion behavior.",
+            "YouTube Converter",
+        )
+        self.chk_auto_reset_after = QCheckBox("Reset wizard after all downloads")
+        self.chk_auto_reset_after.setChecked(
+            getattr(settings.app, "auto_reset_after_downloads", True)
+        )
+        section_dl.add_widget(self.chk_auto_reset_after)
+        self.chk_auto_clear_success = QCheckBox("Auto clear finished downloads")
+        self.chk_auto_clear_success.setChecked(settings.ui.auto_clear_on_success)
+        section_dl.add_widget(self.chk_auto_clear_success)
+
+        # Quality Settings subcategory
+        section_quality = collapsible_section(
+            "Quality & Format",
+            "Default quality preferences and advanced options.",
+            "YouTube Converter",
+        )
+        # EZ Mode settings (moved here as they relate to quality selection)
+        self.chk_ez_simple = QCheckBox("Simple paste mode (EZ Mode)")
+        self.chk_ez_simple.setChecked(settings.ez.simple_paste_mode)
+        section_quality.add_widget(self.chk_ez_simple)
+        self.chk_ez_sanitize = QCheckBox("Sanitize radio/mix links")
+        self.chk_ez_sanitize.setChecked(settings.ez.sanitize_radio_links)
+        section_quality.add_widget(self.chk_ez_sanitize)
+        self.chk_ez_hide_adv = QCheckBox("Hide advanced quality options")
+        self.chk_ez_hide_adv.setChecked(settings.ez.hide_advanced_quality)
+        section_quality.add_widget(self.chk_ez_hide_adv)
+
+        # Placeholder container referenced by tests (hidden when EZ simple enabled)
+        self.advanced_quality_container = QFrame()
+        self.advanced_quality_container.setObjectName("AdvancedQualityContainer")
+        aq_lay = QVBoxLayout(self.advanced_quality_container)
+        aq_lay.setContentsMargins(0, 0, 0, 0)
+
+        def _sync_ez(on: bool):
+            if on:
+                self.chk_ez_sanitize.setChecked(True)
+                self.chk_ez_sanitize.setEnabled(False)
+            else:
+                self.chk_ez_sanitize.setEnabled(True)
+
+        _sync_ez(self.chk_ez_simple.isChecked())
+        self.chk_ez_simple.toggled.connect(_sync_ez)
+
+        # SponsorBlock subcategory (placeholder for future)
+        section_sponsorblock = collapsible_section(
+            "SponsorBlock",
+            "Skip sponsored segments automatically (Coming Soon).",
+            "YouTube Converter",
+        )
+        lbl_coming_soon = QLabel(
+            "⏳ SponsorBlock integration coming in a future update."
+        )
+        lbl_coming_soon.setStyleSheet("color: #888; font-style: italic;")
+        section_sponsorblock.add_widget(lbl_coming_soon)
+        section_sponsorblock.setEnabled(False)
+
+        # ===== GENERAL SETTINGS =====
+        # Main category header
+        general_header = QLabel("⚙️ General Settings")
+        general_header.setStyleSheet(
+            "font-size: 22px; font-weight: 700; margin-top: 16px; margin-bottom: 4px;"
+        )
+        general_header.setProperty("category", "General")
+        self._all_sections.append(general_header)
+        root.addWidget(general_header)
+
+        # Appearance subcategory
         section_app = collapsible_section(
-            "Appearance", "Theme, accent color and general UI behavior.", "Interface"
+            "Appearance", "Theme, accent color and general UI behavior.", "General"
         )
         row_theme = QHBoxLayout()
         row_theme.addWidget(QLabel("Theme:"))
@@ -171,13 +250,10 @@ class SettingsPage(QWidget):
         btn_accent.setObjectName("CompactButton")
         btn_accent.clicked.connect(self.accentPickRequested.emit)
         section_app.add_widget(btn_accent)
-        self.chk_auto_clear_success = QCheckBox("Auto clear finished downloads")
-        self.chk_auto_clear_success.setChecked(settings.ui.auto_clear_on_success)
-        section_app.add_widget(self.chk_auto_clear_success)
 
-        # Search & Input
+        # Search & Input subcategory
         section_search = collapsible_section(
-            "Search & Input", "Controls how text input triggers searches.", "Interface"
+            "Search & Input", "Controls how text input triggers searches.", "General"
         )
         self.chk_auto_search_text = QCheckBox("Auto search while typing")
         self.chk_auto_search_text.setChecked(
@@ -194,23 +270,11 @@ class SettingsPage(QWidget):
         row_db.addWidget(self.spn_search_debounce)
         section_search.add_layout(row_db)
 
-        # Downloads
-        section_dl = collapsible_section(
-            "Downloads",
-            "Workflow preferences for post-completion behavior.",
-            "Downloads",
-        )
-        self.chk_auto_reset_after = QCheckBox("Reset wizard after all downloads")
-        self.chk_auto_reset_after.setChecked(
-            getattr(settings.app, "auto_reset_after_downloads", True)
-        )
-        section_dl.add_widget(self.chk_auto_reset_after)
-
-        # Notifications
+        # Notifications subcategory
         section_notif = collapsible_section(
             "Notifications",
             "Toast notification verbosity level. (WIP, Doesnt work yet)",
-            "Interface",
+            "General",
         )
         section_notif.add_widget(QLabel("Notification detail level:"))
         self.cmb_notif = QComboBox()
@@ -222,11 +286,11 @@ class SettingsPage(QWidget):
         )
         section_notif.add_widget(self.cmb_notif)
 
-        # Updates (schedule-based)
+        # Updates subcategory (schedule-based)
         section_updates = collapsible_section(
             "Updates",
             "Control how the app and yt-dlp update: schedule, channels, and behavior.",
-            "Updates",
+            "General",
         )
         sched_map = {"off": 0, "launch": 1, "daily": 2, "weekly": 3, "monthly": 4}
 
@@ -357,39 +421,9 @@ class SettingsPage(QWidget):
 
         section_updates.add_widget(a_section)
 
-        # EZ Mode
-        section_ez = collapsible_section(
-            "EZ Mode", "Simplify interface for quick single-link downloads.", "Advanced"
-        )
-        self.chk_ez_simple = QCheckBox("Simple paste mode")
-        self.chk_ez_simple.setChecked(settings.ez.simple_paste_mode)
-        section_ez.add_widget(self.chk_ez_simple)
-        self.chk_ez_sanitize = QCheckBox("Sanitize radio/mix links")
-        self.chk_ez_sanitize.setChecked(settings.ez.sanitize_radio_links)
-        section_ez.add_widget(self.chk_ez_sanitize)
-        self.chk_ez_hide_adv = QCheckBox("Hide advanced quality options")
-        self.chk_ez_hide_adv.setChecked(settings.ez.hide_advanced_quality)
-        section_ez.add_widget(self.chk_ez_hide_adv)
-
-        # Placeholder container referenced by tests (hidden when EZ simple enabled)
-        self.advanced_quality_container = QFrame()
-        self.advanced_quality_container.setObjectName("AdvancedQualityContainer")
-        aq_lay = QVBoxLayout(self.advanced_quality_container)
-        aq_lay.setContentsMargins(0, 0, 0, 0)
-
-        def _sync_ez(on: bool):
-            if on:
-                self.chk_ez_sanitize.setChecked(True)
-                self.chk_ez_sanitize.setEnabled(False)
-            else:
-                self.chk_ez_sanitize.setEnabled(True)
-
-        _sync_ez(self.chk_ez_simple.isChecked())
-        self.chk_ez_simple.toggled.connect(_sync_ez)
-
-        # Maintenance
+        # Maintenance subcategory
         section_maint = collapsible_section(
-            "Maintenance", "Log management and diagnostics.", "Advanced"
+            "Maintenance", "Log management and diagnostics.", "General"
         )
         btn_logs = QPushButton("Clear all logs")
         btn_logs.setObjectName("CompactButton")
@@ -402,7 +436,7 @@ class SettingsPage(QWidget):
 
         # Help / FAQ
         section_help = collapsible_section(
-            "Help", "Find answers to common questions.", "Advanced"
+            "Help", "Find answers to common questions.", "General"
         )
         btn_faq = QPushButton("Open FAQ")
         btn_faq.setObjectName("CompactButton")
@@ -585,7 +619,11 @@ class SettingsPage(QWidget):
             for section in self._all_sections:
                 section.setVisible(True)
         else:
-            # Show only matching category
+            # Show only matching category (including headers)
             for section in self._all_sections:
-                category = section.property("category") or "Advanced"
-                section.setVisible(category == filter_text)
+                category = section.property("category")
+                if category:
+                    section.setVisible(category == filter_text)
+                else:
+                    # No category property means it's likely a header label
+                    section.setVisible(False)

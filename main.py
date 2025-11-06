@@ -188,11 +188,11 @@ from core.yt_manager import InfoFetcher
 from ui.style import StyleManager
 from ui.stepper import Stepper
 from ui.toast import ToastManager
-from widgets.step1_link import Step1LinkWidget
-from widgets.step3_quality import Step3QualityWidget
-from widgets.step4_downloads import Step4DownloadsWidget
-from widgets.settings_page import SettingsPage
-from widgets.faq_page import FaqPage
+from features.youtube_converter.step1_link import Step1LinkWidget
+from features.youtube_converter.step3_quality import Step3QualityWidget
+from features.youtube_converter.step4_downloads import Step4DownloadsWidget
+from features.general.settings_page import SettingsPage
+from features.general.faq_page import FaqPage
 from core.logging import export_logs
 from core.models import UpdateAction
 
@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
 
     def _build_pages(self):
         # Home page
-        from widgets.home_page import HomePage
+        from features.home.home_page import HomePage
 
         self.home_page = HomePage()
 
