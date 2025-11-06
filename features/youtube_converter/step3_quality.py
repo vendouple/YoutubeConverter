@@ -363,7 +363,9 @@ class Step3QualityWidget(QWidget):
         subtitle_section_layout.addWidget(self.chk_auto_subs)
 
         # Embed subtitles (video only)
-        self.chk_embed_subs = QCheckBox("Embed in video file (video only)")
+        self.chk_embed_subs = QCheckBox(
+            "Embed in video file (video only) (This currently doesn't work)"
+        )
         self.chk_embed_subs.setChecked(
             getattr(self.settings.defaults, "embed_subtitles", False)
         )
@@ -690,20 +692,14 @@ class Step3QualityWidget(QWidget):
                     key = next((k for (l, k) in self._sb_options if l == lbl), None)
                     if key:
                         res.append(key)
-            # Debug print current categories when fetched
-            # Debug: SponsorBlock categories being used (disabled in production)
-            # print(f"SponsorBlock categories being used: {res}")
             return res
         except Exception as e:
-            # Debug: error getting SponsorBlock categories (disabled in production)
-            # print(f"Error getting SponsorBlock categories: {e}")
             return []
 
     def _apply_all_toggled(self, checked: bool):
         self._apply_all = bool(checked)
         # Show helper buttons only in per-video mode
         self.btn_apply_to_all_items.setVisible(not checked)
-        # Apply to selected button visibility depends on selection
         if not checked:
             selected_count = len(self.preview.selectedItems())
             self.btn_apply_to_selected.setVisible(selected_count > 1)
@@ -874,11 +870,9 @@ class Step3QualityWidget(QWidget):
                 "auto_subs": auto_subs,
                 "embed_subs": embed_subs,
             }
-            # Check subtitle availability when changed
             self._check_subtitle_availability(idx)
         self._update_warnings()
 
-    # ADDED: reflect context (apply-all or selected item) into controls
     def _load_controls_from_context(self):
         if self._apply_all or self.preview.currentRow() < 0:
             sel = self._global_sel
