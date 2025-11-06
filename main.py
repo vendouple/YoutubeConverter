@@ -188,11 +188,11 @@ from core.yt_manager import InfoFetcher
 from ui.style import StyleManager
 from ui.stepper import Stepper
 from ui.toast import ToastManager
-from widgets.step1_link import Step1LinkWidget
-from widgets.step3_quality import Step3QualityWidget
-from widgets.step4_downloads import Step4DownloadsWidget
-from widgets.settings_page import SettingsPage
-from widgets.faq_page import FaqPage
+from features.youtube_converter.step1_link import Step1LinkWidget
+from features.youtube_converter.step3_quality import Step3QualityWidget
+from features.youtube_converter.step4_downloads import Step4DownloadsWidget
+from features.general.settings_page import SettingsPage
+from features.general.faq_page import FaqPage
 from core.logging import export_logs
 from core.models import UpdateAction
 
@@ -247,6 +247,7 @@ class MainWindow(QMainWindow):
         self._migrate_settings()
 
         self.style_mgr = StyleManager(self.settings.ui.accent_color_hex)
+
         self.setStyleSheet(self.style_mgr.qss())
         self.toast = ToastManager(self)
 
@@ -355,18 +356,33 @@ class MainWindow(QMainWindow):
         # Remove focus outline on icon buttons
         self.btn_home.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        self.btn_youtube = QPushButton("📺")
+        self.btn_youtube.setToolTip("YouTube Download")
+        self.btn_youtube.setObjectName("IconButton")
+        self.btn_youtube.setFixedSize(48, 48)
+        self.btn_youtube.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        lay.addWidget(self.btn_home)
+        lay.addWidget(self.btn_youtube)
+        lay.addStretch(1)
+
+        # Settings at the bottom
         self.btn_settings = QPushButton("⚙️")
         self.btn_settings.setToolTip("Settings")
         self.btn_settings.setObjectName("IconButton")
         self.btn_settings.setFixedSize(48, 48)
         self.btn_settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        lay.addWidget(self.btn_home)
         lay.addWidget(self.btn_settings)
-        lay.addStretch(1)
+
         return side
 
     def _build_pages(self):
+        # Home page
+        from features.home.home_page import HomePage
+
+        self.home_page = HomePage()
+
+        # YouTube download flow
         self.page_flow = QWidget()
         flow_layout = QVBoxLayout(self.page_flow)
         flow_layout.setContentsMargins(0, 0, 0, 0)
@@ -398,12 +414,17 @@ class MainWindow(QMainWindow):
             "QScrollArea > QWidget > QWidget { background: transparent; }"
         )
 
+        self.stack.addWidget(self.home_page)
         self.stack.addWidget(self.page_flow)
         self.stack.addWidget(self.settings_scroll)
 
     def _wire_signals(self):
-        self.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        self.btn_settings.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+        self.btn_home.clicked.connect(self._show_home)
+        self.btn_youtube.clicked.connect(self._show_youtube)
+        self.btn_settings.clicked.connect(self._show_settings)
+
+        # Home page
+        self.home_page.youtubeRequested.connect(self._show_youtube)
 
         # Step 1
         self.step1.urlDetected.connect(lambda _: self._refresh_stepper_titles())
@@ -417,6 +438,9 @@ class MainWindow(QMainWindow):
         # Step 3
         self.step4.allFinished.connect(self._on_downloads_finished)
         self.step4.backRequested.connect(self._back_from_step3)
+        self.step4.doneRequested.connect(self._on_done_requested)
+        self.step4.downloadsStarted.connect(lambda: self._lock_ui(True))
+        self.step4.downloadsStopped.connect(lambda: self._lock_ui(False))
 
         # Settings actions
         try:
@@ -482,6 +506,21 @@ class MainWindow(QMainWindow):
                 # Build default selection (use user's defaults; quality best)
                 kind = self.settings.defaults.kind or "audio"
                 fmt = self.settings.defaults.format if kind == "audio" else "mp4"
+
+                # Add subtitle settings from app settings
+                download_subs = getattr(
+                    self.settings.defaults, "download_subtitles", False
+                )
+                sub_langs = getattr(self.settings.defaults, "subtitle_languages", "en")
+                auto_subs = getattr(self.settings.defaults, "auto_generate_subs", False)
+                embed_subs = getattr(self.settings.defaults, "embed_subtitles", False)
+
+                # Add subtitle settings to meta
+                meta["download_subs"] = download_subs
+                meta["sub_langs"] = sub_langs
+                meta["auto_subs"] = auto_subs
+                meta["embed_subs"] = embed_subs
+
                 selection = {
                     "items": [meta],
                     "kind": kind,
@@ -571,6 +610,7 @@ class MainWindow(QMainWindow):
         # Always reset or hold per user preference
         auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
         if auto_reset:
+            # Auto-reset: go back to step 1
             self.step1.reset()
             try:
                 self.step4.reset()
@@ -578,8 +618,46 @@ class MainWindow(QMainWindow):
                 pass
             self.flow_stack.setCurrentIndex(0)
             self.stepper.set_current(0)
+        # If auto_reset is False, Done button will be shown in step4
+
+    def _on_done_requested(self):
+        # User clicked Done button when auto_reset is disabled
+        self.step1.reset()
+        self.flow_stack.setCurrentIndex(0)
+        self.stepper.set_current(0)
         # Notify
         self._toast("Downloads finished.")
+
+    def _show_home(self):
+        """Show home page and hide stepper"""
+        self.stack.setCurrentIndex(0)
+        self.stepper.setVisible(False)
+
+    def _show_youtube(self):
+        """Show YouTube download flow and display stepper"""
+        self.stack.setCurrentIndex(1)
+        self.stepper.setVisible(True)
+
+    def _show_settings(self):
+        """Show settings page and hide stepper"""
+        self.stack.setCurrentIndex(2)
+        self.stepper.setVisible(False)
+
+    def _lock_ui(self, lock: bool):
+        """Lock or unlock UI navigation during busy operations."""
+        try:
+            self.btn_home.setEnabled(not lock)
+            self.btn_youtube.setEnabled(not lock)
+            self.btn_settings.setEnabled(not lock)
+        except Exception:
+            pass
+
+        # Lock download location button during downloads
+        try:
+            if hasattr(self.step4, "btn_choose"):
+                self.step4.btn_choose.setEnabled(not lock)
+        except Exception:
+            pass
 
     def _pick_accent(self):
         from PyQt6.QtWidgets import QColorDialog
@@ -800,9 +878,7 @@ class MainWindow(QMainWindow):
 
         view = QTextBrowser()
         view.setOpenExternalLinks(True)
-        view.setStyleSheet(
-            "QTextBrowser { background: #1e1f22; border: 1px solid #34353b; border-radius: 8px; padding: 8px; }"
-        )
+        view.setObjectName("ChangelogBrowser")
         text = changelog_md or "_No changelog provided._"
         try:
             view.setMarkdown(text)
@@ -817,17 +893,10 @@ class MainWindow(QMainWindow):
         )
         btn_update = btns.button(QDialogButtonBox.StandardButton.Yes)
         btn_update.setText("Update now")
+        btn_update.setObjectName("PrimaryButton")
         btn_later = btns.button(QDialogButtonBox.StandardButton.No)
         btn_later.setText("Later")
-
-        for b in (btn_update, btn_later):
-            b.setStyleSheet(
-                f"QPushButton {{ background: #2a2b30; border: 1px solid #33343a; border-radius: 8px; padding: 6px 12px; }}"
-                f"QPushButton:hover {{ border-color: {accent}; }}"
-            )
-        btn_update.setStyleSheet(
-            f"QPushButton {{ background: {accent}; color: #ffffff; border: 1px solid {accent}; border-radius: 8px; padding: 6px 12px; }}"
-        )
+        btn_later.setObjectName("SecondaryButton")
 
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
@@ -979,7 +1048,14 @@ class MainWindow(QMainWindow):
             if not hasattr(app, "notifications_detail"):
                 setattr(app, "notifications_detail", "detailed")
             if not hasattr(ui, "theme_mode"):
-                setattr(ui, "theme_mode", "system")  # system|light|dark|oled
+                setattr(ui, "theme_mode", "dark")  # light|dark|oled
+            else:
+                try:
+                    mode = str(getattr(ui, "theme_mode", "")).strip().lower()
+                    if mode == "system" or not mode:
+                        setattr(ui, "theme_mode", "dark")
+                except Exception:
+                    setattr(ui, "theme_mode", "dark")
             if not hasattr(self.settings, "ez"):
                 setattr(
                     self.settings,
@@ -1006,40 +1082,20 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # Apply theme stylesheet variants
+    # Apply theme stylesheet variants (now delegated to StyleManager)
     def _apply_theme(self):
-        base = self.style_mgr.qss()
-        mode = getattr(self.settings.ui, "theme_mode", "system")
+        mode = str(getattr(self.settings.ui, "theme_mode", "dark") or "dark").lower()
+        if mode not in {"light", "dark", "oled"}:
+            mode = "dark"
         accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28")
-        extra = ""
-        if mode == "light":
-            extra = f"""
-            QWidget {{ background:#f2f2f2; color:#111; }}
-            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
-            .CategoryCard {{ background:#ffffff; border:1px solid #d7d7d9; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
-            QPushButton {{ background:#ffffff; }}
-            """
-        elif mode == "oled":
-            extra = f"""
-            QWidget {{ background:#000000; color:#f5f5f5; }}
-            QScrollArea, QScrollArea QWidget {{ background:transparent; }}
-            .CategoryCard {{ background:#0a0a0a; border:1px solid #202020; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#aaaaaa; font-size:11px; }}
-            QPushButton {{ background:#111111; }}
-            """
-        elif mode == "dark":
-            extra = f"""
-            .CategoryCard {{ background:#1e1f22; border:1px solid #2d2f33; border-radius:14px; }}
-            QLabel[role='caption'] {{ color:#b0b2b8; font-size:11px; }}
-            """
-        else:
-            extra = f"""
-            .CategoryCard {{ background:rgba(255,255,255,0.5); border:1px solid #cccccc; border-radius:14px; backdrop-filter:blur(12px); }}
-            QLabel[role='caption'] {{ color:#555; font-size:11px; }}
-            """
-        themed = base + "\n" + extra + f"\n:root {{ --accent: {accent}; }}"
+        # Ensure StyleManager has the current accent
+        self.style_mgr.with_accent(accent)
+        themed = self.style_mgr.theme_qss(mode)
         self.setStyleSheet(themed)
+
+    def resizeEvent(self, event):
+        """Handle window resize"""
+        super().resizeEvent(event)
 
     def _open_faq(self):
         try:
@@ -1089,7 +1145,6 @@ class MainWindow(QMainWindow):
                     self._bg_fetcher.finished.disconnect()
                 except Exception:
                     pass
-                # Do not delete thread directly here; finished handler deletes safely
                 self._bg_fetcher = None
         except Exception:
             pass
@@ -1101,10 +1156,12 @@ class MainWindow(QMainWindow):
                 d = QProgressDialog(self)
                 d.setWindowTitle("Initializing")
                 d.setLabelText(msg or "Please wait…")
-                d.setRange(0, 0)  # busy
+                d.setRange(0, 0)
                 d.setCancelButton(None)
                 d.setModal(True)
                 d.setMinimumWidth(360)
+                d.setWindowFlags(d.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
+                d.closeEvent = lambda event: event.ignore()
                 self._init_dialog = d
                 d.show()
             else:

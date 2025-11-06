@@ -21,7 +21,7 @@ class UpdateProgressDialog(QDialog):
         self.lbl = QLabel("Checking for updates…")
         self.lbl.setWordWrap(True)
         self.bar = QProgressBar()
-        self.bar.setRange(0, 0)  # indeterminate initial
+        self.bar.setRange(0, 0)
         lay.addWidget(self.lbl)
         lay.addWidget(self.bar)
         row = QHBoxLayout()

@@ -19,7 +19,7 @@ Convert YouTube videos to audio or video on Windows with a simple, modern UI. Bu
 
 ## Settings and updates
 
-- Theme: System/Light/Dark/OLED (applies immediately and persists across restarts)
+- Theme: Light/Dark/OLED (applies immediately and persists across restarts)
 - EZ Mode: hides advanced controls, sanitizes radio links to single videos
 - Updates (Settings → Updates):
   - App updates: schedule + action (No Check, Prompt, Auto)

@@ -29,7 +29,7 @@ class UpdatePromptDialog(QDialog):
             if has_update
             else (
                 "The application will check for updates now. If a newer version is found, "
-                "it can be downloaded and applied, then a restart will be required."
+                "it will be downloaded and applied. It will automatically restart afterward.\n\n"
             )
         )
         lbl = QLabel(msg)
