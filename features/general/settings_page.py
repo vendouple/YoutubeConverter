@@ -626,67 +626,6 @@ class SettingsPage(QWidget):
         lbl_info.setStyleSheet("color: #888; font-size: 12px; margin-top: 8px;")
         section_sponsorblock.add_widget(lbl_info)
 
-        # Subtitles/Lyrics subcategory
-        section_subtitles = collapsible_section(
-            "Subtitles & Lyrics",
-            "Download subtitles/lyrics files alongside your videos and audio",
-        )
-        root.addWidget(section_subtitles)
-
-        # Enable subtitles checkbox
-        self.chk_subtitles = QCheckBox("Download subtitles/lyrics")
-        self.chk_subtitles.setChecked(
-            getattr(settings.defaults, "download_subtitles", False)
-        )
-        section_subtitles.add_widget(self.chk_subtitles)
-
-        # Language selection
-        lang_row = QWidget()
-        lang_layout = QHBoxLayout(lang_row)
-        lang_layout.setContentsMargins(20, 0, 0, 0)
-        lang_layout.setSpacing(8)
-        lbl_lang = QLabel("Languages:")
-        lbl_lang.setToolTip("Comma-separated language codes (e.g., en,es,fr)")
-        self.txt_subtitle_langs = QLineEdit()
-        self.txt_subtitle_langs.setPlaceholderText("en,es,fr")
-        self.txt_subtitle_langs.setText(
-            getattr(settings.defaults, "subtitle_languages", "en")
-        )
-        self.txt_subtitle_langs.setMaximumWidth(200)
-        lang_layout.addWidget(lbl_lang)
-        lang_layout.addWidget(self.txt_subtitle_langs)
-        lang_layout.addStretch(1)
-        section_subtitles.add_widget(lang_row)
-
-        # Auto-generated subtitles checkbox
-        self.chk_auto_subs = QCheckBox(
-            "Download auto-generated if manual not available"
-        )
-        self.chk_auto_subs.setChecked(
-            getattr(settings.defaults, "auto_generate_subs", False)
-        )
-        self.chk_auto_subs.setStyleSheet("margin-left: 20px;")
-        section_subtitles.add_widget(self.chk_auto_subs)
-
-        # Embed subtitles (video only)
-        self.chk_embed_subs = QCheckBox("Embed subtitles in video files (video only)")
-        self.chk_embed_subs.setChecked(
-            getattr(settings.defaults, "embed_subtitles", False)
-        )
-        self.chk_embed_subs.setStyleSheet("margin-left: 20px;")
-        self.chk_embed_subs.setToolTip(
-            "Embed subtitles into video file. For audio downloads, subtitles are always saved as separate files."
-        )
-        section_subtitles.add_widget(self.chk_embed_subs)
-
-        # Info label
-        lbl_sub_info = QLabel(
-            "ℹ️ Subtitles will be downloaded as .srt files. For videos, you can embed them into the file."
-        )
-        lbl_sub_info.setWordWrap(True)
-        lbl_sub_info.setStyleSheet("color: #888; font-size: 12px; margin-top: 8px;")
-        section_subtitles.add_widget(lbl_sub_info)
-
         root.addStretch(1)
 
         # Add scrollable content area to main layout
@@ -898,14 +837,6 @@ class SettingsPage(QWidget):
         settings.defaults.filename_template = (
             self.txt_filename_template.text() or "{title}"
         )
-
-        # Subtitle settings
-        settings.defaults.download_subtitles = self.chk_subtitles.isChecked()
-        settings.defaults.subtitle_languages = (
-            self.txt_subtitle_langs.text().strip() or "en"
-        )
-        settings.defaults.auto_generate_subs = self.chk_auto_subs.isChecked()
-        settings.defaults.embed_subtitles = self.chk_embed_subs.isChecked()
 
     def _on_search_changed(self, text: str):
         """Filter settings sections based on search text with highlighting."""
