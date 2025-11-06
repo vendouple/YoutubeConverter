@@ -689,10 +689,6 @@ class SettingsPage(QWidget):
             self.chk_sb_preview,
             self.chk_sb_music_offtopic,
             self.chk_sb_filler,
-            self.chk_subtitles,
-            self.txt_subtitle_langs,
-            self.chk_auto_subs,
-            self.chk_embed_subs,
         ]
         for w in widgets_for_change:
             if hasattr(w, "toggled"):
