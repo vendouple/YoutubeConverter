@@ -90,6 +90,12 @@ QPushButton {{
 }}
 QPushButton:hover {{ border-color: {ac}; }}
 QPushButton:pressed {{ background: #25262a; }}
+QPushButton:disabled {{
+    background: #1a1b1e;
+    border: 1px solid #2a2b30;
+    color: #555555;
+    opacity: 0.5;
+}}
 QPushButton:checked {{
     border-color: {ac};
     background: #2d2e33;
@@ -436,6 +442,12 @@ QFrame#CollapsibleHeader:hover {{
                 background: #f3f4f6; 
             }}
             QPushButton:pressed {{ background: #e5e7eb; }}
+            QPushButton:disabled {{
+                background: #f3f4f6;
+                border: 1px solid #e5e7eb;
+                color: #9ca3af;
+                opacity: 0.5;
+            }}
             
             /* Light Segment Buttons (Video/Audio) - Balanced 50/50 menu style */
             QPushButton#SegmentButton {{
@@ -728,6 +740,12 @@ QFrame#CollapsibleHeader:hover {{
             }}
             QPushButton {{ background: #111111; border: 1px solid #343a40; color: #f8f9fa; }}
             QPushButton:hover {{ background: #1a1a1a; border-color: {ac}; }}
+            QPushButton:disabled {{
+                background: #0a0a0a;
+                border: 1px solid #1a1a1a;
+                color: #444444;
+                opacity: 0.5;
+            }}
             
             /* OLED Segment Buttons (Video/Audio) - Balanced 50/50 menu style */
             QPushButton#SegmentButton {{

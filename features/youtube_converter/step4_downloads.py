@@ -4,7 +4,7 @@ import subprocess
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -21,12 +21,19 @@ from PyQt6.QtWidgets import (
 
 from core.settings import AppSettings, SettingsManager
 from core.ffmpeg_manager import FF_EXE, FF_DIR
-from core.yt_manager import Downloader, InfoFetcher  # add InfoFetcher
+from core.yt_manager import Downloader
 
 
 class DownloadItemWidget(QWidget):
-    def __init__(self, title: str):
+    # Signal for when open icon is clicked
+    openFileRequested = pyqtSignal(int)  # Emits row index
+
+    def __init__(self, title: str, row: int = -1):
         super().__init__()
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("DownloadItemWidget { background: transparent; }")
+        self.row = row  # Store row index for click handling
+
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)  # keep in sync with Step 1 spacing feel
         lay.setSpacing(6)
@@ -46,6 +53,7 @@ class DownloadItemWidget(QWidget):
         self.progress = QProgressBar()
         self.progress.setObjectName("DlProgress")
         self.progress.setValue(0)
+        self.progress.setFixedHeight(20)
 
         col = QVBoxLayout()
         col.addWidget(self.title)
@@ -55,13 +63,56 @@ class DownloadItemWidget(QWidget):
         lay.addWidget(self.thumb)
         lay.addLayout(col, 1)
 
+        self.open_icon = QLabel("📂")
+        self.open_icon.setStyleSheet(
+            """
+            QLabel {
+                font-size: 24px;
+                padding: 8px;
+                border-radius: 6px;
+                background: transparent;
+            }
+            QLabel:hover {
+                background: rgba(242, 140, 40, 0.15);
+            }
+        """
+        )
+        self.open_icon.setToolTip("Click to open file")
+        self.open_icon.hide()
+        self.open_icon.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Make the icon clickable
+        self.open_icon.mousePressEvent = lambda event: self._on_icon_clicked()
+        lay.addWidget(self.open_icon)
+
         # Reserve full height before hiding status/progress so the list doesn't jump
         self._full_size_hint = self.sizeHint()
         self.status.hide()
         self.progress.hide()
 
+    def _on_icon_clicked(self):
+        """Emit signal when folder icon is clicked."""
+        if self.row >= 0:
+            self.openFileRequested.emit(self.row)
+
     def full_size_hint(self):
         return self._full_size_hint
+
+    def show_open_icon(self, accent_color: str = "#F28C28"):
+        """Show the open file icon with accent color styling."""
+        self.open_icon.setStyleSheet(
+            f"""
+            QLabel {{
+                font-size: 24px;
+                padding: 8px;
+                border-radius: 6px;
+                background: transparent;
+            }}
+            QLabel:hover {{
+                background: rgba({int(accent_color[1:3], 16)}, {int(accent_color[3:5], 16)}, {int(accent_color[5:7], 16)}, 0.15);
+            }}
+        """
+        )
+        self.open_icon.show()
 
 
 class Step4DownloadsWidget(QWidget):
@@ -70,11 +121,11 @@ class Step4DownloadsWidget(QWidget):
     # Signal for manual completion when auto-reset is disabled
     doneRequested = pyqtSignal()
     # Signals for UI locking
-    downloadsStarted = pyqtSignal()  # Emitted when downloads start
-    downloadsStopped = pyqtSignal()  # Emitted when downloads are stopped or finished
+    downloadsStarted = pyqtSignal()
+    downloadsStopped = pyqtSignal()
 
     class _ThumbWorker(QThread):
-        done = pyqtSignal(str, QPixmap)  # video_url, pixmap
+        done = pyqtSignal(str, QPixmap)
 
         def __init__(self, video_url: str, thumb_url: str, parent=None):
             super().__init__(parent)
@@ -111,7 +162,7 @@ class Step4DownloadsWidget(QWidget):
         self.fmt = "mp3"
         self.quality = "best"
         self.downloader: Optional[Downloader] = None
-        self._meta_fetchers: dict[int, InfoFetcher] = {}
+        self._meta_fetchers: dict = {}  # Legacy cleanup dict
         self._thumb_threads: List[Step4DownloadsWidget._ThumbWorker] = []
         self._downloading = False
         self._file_map = {}  # row -> filepath
@@ -181,12 +232,6 @@ class Step4DownloadsWidget(QWidget):
         footer.addLayout(actions)
         lay.addLayout(footer)
 
-        # Hook double click on list if available
-        try:
-            self.list.itemDoubleClicked.connect(self._open_item_file)
-        except Exception:
-            pass
-
     # Allow MainWindow to push settings changes
     def apply_ez_mode(self, settings=None):
         try:
@@ -230,7 +275,10 @@ class Step4DownloadsWidget(QWidget):
         self._file_map.clear()
         for idx, it in enumerate(self.items):
             title = it.get("title") or "Untitled"
-            w = DownloadItemWidget(title)
+            w = DownloadItemWidget(title, row=idx)  # Pass row index
+            # Connect the widget's signal to open file handler
+            w.openFileRequested.connect(self._open_file_by_row)
+
             # Async thumb fetch
             vurl = (it.get("webpage_url") or it.get("url")) or ""
             thumb_url = it.get("thumbnail") or (it.get("thumbnails") or [{}])[-1].get(
@@ -261,52 +309,6 @@ class Step4DownloadsWidget(QWidget):
         self.btn_done.setVisible(False)
         self._downloading = False
 
-    # Do not start background metadata fetching
-
-    def _start_bg_metadata(self):
-        for idx, it in enumerate(self.items):
-            if not self._needs_metadata(it) or idx in self._meta_fetchers:
-                continue
-            url = it.get("webpage_url") or it.get("url")
-            if not url:
-                continue
-            f = InfoFetcher(url)
-
-            def _ok(meta: dict, i=idx):
-                try:
-                    self.items[i] = {**self.items[i], **(meta or {})}
-                    w = self._get_widget(i)
-                    if w:
-                        title = self.items[i].get("title") or "Untitled"
-                        w.title.setText(title)
-                        turl = self.items[i].get("thumbnail") or (
-                            self.items[i].get("thumbnails") or [{}]
-                        )[-1].get("url")
-                        if turl:
-                            try:
-                                import requests
-
-                                r = requests.get(turl, timeout=6)
-                                if r.ok:
-                                    px = QPixmap()
-                                    if px.loadFromData(r.content):
-                                        w.thumb.setPixmap(px)
-                            except Exception:
-                                pass
-                        w.status.setText("Waiting...")
-                        w.progress.setRange(0, 100)
-                        w.progress.setValue(0)
-                finally:
-                    self._meta_fetchers.pop(i, None)
-
-            def _fail(err: str, i=idx):
-                self._meta_fetchers.pop(i, None)
-
-            f.finished_ok.connect(_ok)
-            f.finished_fail.connect(_fail)
-            self._meta_fetchers[idx] = f
-            f.start()
-
     def _cleanup_bg_metadata(self):
         """Safely disconnect and clean up metadata fetchers"""
         for i, f in list(self._meta_fetchers.items()):
@@ -327,19 +329,6 @@ class Step4DownloadsWidget(QWidget):
             gc.collect()
         except Exception:
             pass
-
-    # Small helper to mirror Downloader heuristic
-    def _needs_metadata(self, it: dict) -> bool:
-        """Determine if an item needs metadata fetching"""
-        if not it:
-            return True
-        if not it.get("url") and not it.get("webpage_url"):
-            return False
-        has_core = (
-            bool(it.get("id")) or bool(it.get("duration")) or bool(it.get("extractor"))
-        )
-        has_thumb = bool(it.get("thumbnail")) or bool(it.get("thumbnails"))
-        return not (has_core and has_thumb)
 
     def _toggle_start_pause(self):
         if not self.downloader:
@@ -472,7 +461,7 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setEnabled(True)
         self.btn_stop.setVisible(True)  # Show Stop once started
         self.btn_stop.setEnabled(True)
-        
+
         # Disable Back button during downloads
         self.btn_back.setEnabled(False)
 
@@ -497,7 +486,7 @@ class Step4DownloadsWidget(QWidget):
         self.btn_start.setEnabled(bool(self.items))
         self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
-        
+
         # Re-enable Back button after stopping
         self.btn_back.setEnabled(True)
 
@@ -671,68 +660,26 @@ class Step4DownloadsWidget(QWidget):
 
     # Connect this to Downloader.itemFileReady
     def _on_item_file_ready(self, row: int, path: str):
+        """Store file path and show open icon when file is ready."""
         self._file_map[row] = path
+
+        # Show the open icon on the widget
+        w = self._get_widget(row)
+        if w:
+            try:
+                accent = getattr(self.settings.ui, "accent_color_hex", "#F28C28")
+                w.show_open_icon(accent)
+            except Exception:
+                w.show_open_icon()
+
+    def _open_file_by_row(self, row: int):
+        """Open file by row index (called from folder icon click)."""
         try:
-            # Add a shortcut icon to indicate openable file
-            if hasattr(self, "list") and 0 <= row < self.list.count():
-                it: QListWidgetItem = self.list.item(row)
-                if it and it.icon().isNull():
-                    try:
-                        # Create a custom shortcut icon (box with arrow)
-                        from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen
-                        from PyQt6.QtCore import QRect, QPoint
+            path = self._file_map.get(row)
 
-                        pixmap = QPixmap(48, 48)
-                        pixmap.fill(Qt.GlobalColor.transparent)
-
-                        painter = QPainter(pixmap)
-                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-                        # Draw document icon (rectangle with folded corner)
-                        painter.setPen(QPen(QColor("#2196F3"), 2))
-                        painter.setBrush(QColor("#E3F2FD"))
-                        painter.drawRoundedRect(8, 6, 28, 36, 3, 3)
-
-                        # Draw folded corner
-                        painter.setBrush(QColor("#BBDEFB"))
-                        points = [QPoint(30, 6), QPoint(36, 12), QPoint(30, 12)]
-                        painter.drawPolygon(points)
-
-                        # Draw shortcut arrow overlay (white circle with blue arrow)
-                        painter.setBrush(QColor("#FFFFFF"))
-                        painter.setPen(QPen(QColor("#1976D2"), 2))
-                        painter.drawEllipse(26, 26, 18, 18)
-
-                        # Draw arrow
-                        painter.setPen(QPen(QColor("#1976D2"), 2))
-                        # Arrow shaft
-                        painter.drawLine(30, 35, 38, 35)
-                        # Arrow head
-                        painter.drawLine(38, 35, 35, 32)
-                        painter.drawLine(38, 35, 35, 38)
-
-                        painter.end()
-
-                        it.setIcon(QIcon(pixmap))
-                    except Exception:
-                        # Fallback to system icon
-                        try:
-                            it.setIcon(QIcon.fromTheme("document-open"))
-                        except Exception:
-                            pass
-                it.setData(
-                    Qt.ItemDataRole.UserRole,
-                    {**(it.data(Qt.ItemDataRole.UserRole) or {}), "filepath": path},
-                )
-        except Exception:
-            pass
-
-    def _open_item_file(self, item: QListWidgetItem):
-        try:
-            data = item.data(Qt.ItemDataRole.UserRole) or {}
-            path = data.get("filepath")
             if not path or not os.path.exists(path):
                 return
+
             if sys.platform.startswith("win"):
                 os.startfile(path)
             elif sys.platform == "darwin":
@@ -795,12 +742,27 @@ class Step4DownloadsWidget(QWidget):
         except Exception:
             pass
 
-        # Disable Back button to make done state obvious
+        # Check if auto-reset is enabled
         try:
-            if hasattr(self, "btn_back"):
-                self.btn_back.setEnabled(False)
+            auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
         except Exception:
-            pass
+            auto_reset = True
+
+        # If auto-reset is disabled, re-enable Back button so user can navigate
+        # Otherwise keep it disabled until reset
+        if not auto_reset:
+            try:
+                if hasattr(self, "btn_back"):
+                    self.btn_back.setEnabled(True)
+            except Exception:
+                pass
+        else:
+            # Disable Back button for auto-reset mode
+            try:
+                if hasattr(self, "btn_back"):
+                    self.btn_back.setEnabled(False)
+            except Exception:
+                pass
 
         # Disable folder selection
         try:
@@ -815,24 +777,45 @@ class Step4DownloadsWidget(QWidget):
         self.btn_stop.setVisible(False)
         self.btn_stop.setEnabled(False)
 
-        # Gray out the download list to make done state obvious
         try:
-            self.list.setEnabled(False)
-            self.list.setStyleSheet(
+            # Get current theme to apply appropriate styling
+            theme_mode = getattr(self.settings.ui, "theme_mode", "dark").lower()
+
+            if theme_mode == "light":
+                # Light mode: subtle gray overlay
+                self.list.setStyleSheet(
+                    """
+                    QListWidget {
+                        background: #f8f9fa;
+                        opacity: 0.8;
+                    }
                 """
-                QListWidget:disabled {
-                    background: #f5f5f5;
-                    color: #999999;
-                    opacity: 0.6;
-                }
-            """
-            )
+                )
+            elif theme_mode == "oled":
+                # OLED mode: very dark, subtle
+                self.list.setStyleSheet(
+                    """
+                    QListWidget {
+                        background: #0a0a0a;
+                        opacity: 0.8;
+                    }
+                """
+                )
+            else:
+                # Dark mode (default): slightly lighter than normal
+                self.list.setStyleSheet(
+                    """
+                    QListWidget {
+                        background: #1e1f24;
+                        opacity: 0.8;
+                    }
+                """
+                )
         except Exception:
             pass
 
         # Show Done button if auto reset is disabled
         try:
-            auto_reset = getattr(self.settings.app, "auto_reset_after_downloads", True)
             if not auto_reset:
                 self.btn_done.setEnabled(True)
                 self.btn_done.setVisible(True)
@@ -868,7 +851,6 @@ class Step4DownloadsWidget(QWidget):
     def _done_clicked(self):
         # Reset the download UI
         self.reset()
-        # Signal to parent to go back to step 1
         try:
             self.doneRequested.emit()
         except Exception:
@@ -890,7 +872,13 @@ class Step4DownloadsWidget(QWidget):
         self.btn_done.setStyleSheet("")
         self._nightly_prompt_shown = False
 
-        # Re-enable list and clear any disabled styling
+        # Re-enable buttons for next download session
+        try:
+            self.btn_back.setEnabled(True)
+            self.btn_choose.setEnabled(True)
+        except Exception:
+            pass
+
         try:
             self.list.setEnabled(True)
             self.list.setStyleSheet("")
@@ -913,36 +901,6 @@ class Step4DownloadsWidget(QWidget):
             import gc
 
             gc.collect()
-        except Exception:
-            pass
-
-    # --- Open / reveal helper (robust against missing file) ---
-    def open_or_reveal(self, item: dict):
-        try:
-            path = (item or {}).get("output_path")
-            if not path:
-                return
-            if not os.path.exists(path):
-                # Attempt to reveal parent directory if exists
-                parent = os.path.dirname(path)
-                if parent and os.path.isdir(parent):
-                    try:
-                        if sys.platform.startswith("win"):
-                            os.startfile(parent)
-                        elif sys.platform == "darwin":
-                            subprocess.Popen(["open", parent])
-                        else:
-                            subprocess.Popen(["xdg-open", parent])
-                    except Exception:
-                        pass
-                return
-            # Open existing file
-            if sys.platform.startswith("win"):
-                os.startfile(path)
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", path])
-            else:
-                subprocess.Popen(["xdg-open", path])
         except Exception:
             pass
 

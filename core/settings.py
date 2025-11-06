@@ -89,6 +89,21 @@ class DefaultsSettings:
         default_factory=lambda: ["sponsor", "selfpromo"]
     )
     sponsorblock_api_key: str = ""
+    sponsorblock_remember_last: bool = (
+        False  # True = remember quality menu changes, False = always use settings default
+    )
+    # Filename template
+    filename_template: str = "{title}"  # Default template
+    # Subtitle/Lyrics settings
+    download_subtitles: bool = False  # Download subtitles/lyrics
+    subtitle_languages: str = "en"  # Comma-separated language codes (e.g., "en,es,fr")
+    embed_subtitles: bool = False  # Embed subtitles in video file (video only)
+    auto_generate_subs: bool = (
+        False  # Download auto-generated subtitles if manual not available
+    )
+    hide_subtitle_options: bool = (
+        True  # Hide subtitle options by default (experimental feature)
+    )
 
 
 @dataclass

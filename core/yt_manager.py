@@ -51,6 +51,10 @@ def build_ydl_opts(
     quality: Optional[str] = None,
     sponsorblock_remove: Optional[List[str]] = None,
     sponsorblock_api: Optional[str] = None,
+    download_subs: bool = False,
+    sub_langs: str = "en",
+    auto_subs: bool = False,
+    embed_subs: bool = False,
 ):
     outtmpl = os.path.join(base_dir, "%(title).200s [%(id)s].%(ext)s")
     postprocessors = []
@@ -145,6 +149,26 @@ def build_ydl_opts(
             opts["sponsorblock_api"] = sponsorblock_api
     # Debug: SponsorBlock remove set (disabled in production)
     # print(f"SponsorBlock remove set to: {opts['sponsorblock_remove']}")
+
+    # Subtitle configuration
+    if download_subs:
+        opts["writesubtitles"] = True
+        opts["writeautomaticsub"] = auto_subs
+        # Parse language codes
+        lang_list = [lang.strip() for lang in sub_langs.split(",") if lang.strip()]
+        if lang_list:
+            opts["subtitleslangs"] = lang_list
+        else:
+            opts["subtitleslangs"] = ["en"]
+
+        # Embed subtitles for video only
+        if kind == "video" and embed_subs:
+            # Add subtitle embedding post-processor
+            postprocessors.append(
+                {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False}
+            )
+            opts["postprocessors"] = postprocessors
+
     return opts
 
 
@@ -436,6 +460,10 @@ class Downloader(QThread):
         ffmpeg_location: Optional[str],
         sb_enabled: bool,
         sb_cats: List[str],
+        download_subs: bool = False,
+        sub_langs: str = "en",
+        auto_subs: bool = False,
+        embed_subs: bool = False,
     ) -> List[str]:
         outtmpl = os.path.join(base_dir, "%(title).200s [%(id)s].%(ext)s")
         args = [
@@ -500,6 +528,22 @@ class Downloader(QThread):
         if ffmpeg_location:
             args += ["--ffmpeg-location", ffmpeg_location]
 
+        # Subtitle configuration
+        if download_subs:
+            args.append("--write-subs")
+            if auto_subs:
+                args.append("--write-auto-subs")
+            # Language codes
+            lang_list = [lang.strip() for lang in sub_langs.split(",") if lang.strip()]
+            if lang_list:
+                args += ["--sub-langs", ",".join(lang_list)]
+            else:
+                args += ["--sub-langs", "en"]
+
+            # Embed subtitles for video only
+            if kind == "video" and embed_subs:
+                args.append("--embed-subs")
+
         # Progress template
         args += [
             "--progress-template",
@@ -537,6 +581,10 @@ class Downloader(QThread):
         qual: str,
         sb_enabled: bool,
         sb_cats: List[str],
+        download_subs: bool = False,
+        sub_langs: str = "en",
+        auto_subs: bool = False,
+        embed_subs: bool = False,
     ) -> tuple[bool, Optional[str]]:
         try:
             args = self._build_cli_args(
@@ -548,6 +596,10 @@ class Downloader(QThread):
                 self.ffmpeg_location,
                 sb_enabled,
                 sb_cats,
+                download_subs,
+                sub_langs,
+                auto_subs,
+                embed_subs,
             )
             kwargs = _win_no_window_kwargs()
             # Disable third-party plugins for stability
@@ -618,13 +670,27 @@ class Downloader(QThread):
         qual: str,
         sb_enabled: bool,
         sb_cats: List[str],
+        download_subs: bool = False,
+        sub_langs: str = "en",
+        auto_subs: bool = False,
+        embed_subs: bool = False,
     ) -> tuple[bool, Optional[str]]:
         last_error: Optional[str] = None
         binary_exists = os.path.exists(YTDLP_EXE)
 
         if binary_exists:
             ok, err = self._download_with_binary(
-                idx, url, kind, fmt, qual, sb_enabled, sb_cats
+                idx,
+                url,
+                kind,
+                fmt,
+                qual,
+                sb_enabled,
+                sb_cats,
+                download_subs,
+                sub_langs,
+                auto_subs,
+                embed_subs,
             )
             if ok:
                 try:
@@ -647,6 +713,10 @@ class Downloader(QThread):
             qual,
             sponsorblock_remove=(sb_cats if sb_enabled and sb_cats else None),
             sponsorblock_api=("https://sponsor.ajay.app" if sb_enabled else None),
+            download_subs=download_subs,
+            sub_langs=sub_langs,
+            auto_subs=auto_subs,
+            embed_subs=embed_subs,
         )
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -718,6 +788,12 @@ class Downloader(QThread):
             # Debug: printing formatted size (disabled in production)
             # print(f"Item {idx} SponsorBlock: enabled={sb_enabled}, categories={sb_cats}")
 
+            # Subtitle settings
+            download_subs = bool(it.get("download_subs", False))
+            sub_langs = str(it.get("sub_langs", "en"))
+            auto_subs = bool(it.get("auto_subs", False))
+            embed_subs = bool(it.get("embed_subs", False))
+
             binary_exists = os.path.exists(YTDLP_EXE)
             if not binary_exists:
                 # Debug: printing percent (disabled in production)
@@ -737,7 +813,17 @@ class Downloader(QThread):
                     )
                     QThread.msleep(350)
                 success, err = self._attempt_download(
-                    idx, url, kind, fmt, qual, sb_enabled, sb_cats
+                    idx,
+                    url,
+                    kind,
+                    fmt,
+                    qual,
+                    sb_enabled,
+                    sb_cats,
+                    download_subs,
+                    sub_langs,
+                    auto_subs,
+                    embed_subs,
                 )
                 if success:
                     break

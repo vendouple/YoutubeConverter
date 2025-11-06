@@ -506,6 +506,21 @@ class MainWindow(QMainWindow):
                 # Build default selection (use user's defaults; quality best)
                 kind = self.settings.defaults.kind or "audio"
                 fmt = self.settings.defaults.format if kind == "audio" else "mp4"
+
+                # Add subtitle settings from app settings
+                download_subs = getattr(
+                    self.settings.defaults, "download_subtitles", False
+                )
+                sub_langs = getattr(self.settings.defaults, "subtitle_languages", "en")
+                auto_subs = getattr(self.settings.defaults, "auto_generate_subs", False)
+                embed_subs = getattr(self.settings.defaults, "embed_subtitles", False)
+
+                # Add subtitle settings to meta
+                meta["download_subs"] = download_subs
+                meta["sub_langs"] = sub_langs
+                meta["auto_subs"] = auto_subs
+                meta["embed_subs"] = embed_subs
+
                 selection = {
                     "items": [meta],
                     "kind": kind,
@@ -1130,7 +1145,6 @@ class MainWindow(QMainWindow):
                     self._bg_fetcher.finished.disconnect()
                 except Exception:
                     pass
-                # Do not delete thread directly here; finished handler deletes safely
                 self._bg_fetcher = None
         except Exception:
             pass
@@ -1142,10 +1156,12 @@ class MainWindow(QMainWindow):
                 d = QProgressDialog(self)
                 d.setWindowTitle("Initializing")
                 d.setLabelText(msg or "Please wait…")
-                d.setRange(0, 0)  # busy
+                d.setRange(0, 0)
                 d.setCancelButton(None)
                 d.setModal(True)
                 d.setMinimumWidth(360)
+                d.setWindowFlags(d.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
+                d.closeEvent = lambda event: event.ignore()
                 self._init_dialog = d
                 d.show()
             else:
