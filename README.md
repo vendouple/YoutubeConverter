@@ -1,13 +1,22 @@
 <p align="center">
 <img src="YTConverterIcon.png" width="300" alt="Logo">
 </p>
+<div align="center">
+
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vendouple/YoutubeConverter/.github%2Fworkflows%2Fbuilder.yml)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/vendouple/YoutubeConverter/total)
+
+</div>
 
 # YouTube Converter
+> [!NOTE]  
+> Youtube Converter bug fixes and feature updates will be implemented very slowly. On a future note, I will be migrating this app away from PyQt6 to a faster framework like C for the backend and html for easy sytling in the frontend.
+> Features like Cutting, Bulk Converting. Will not be implemented with this framework. So expect v3 to come out in a very long time.
+
 
 Convert YouTube videos to audio or video on Windows with a simple, modern UI. Built with PyQt6 + yt-dlp + ffmpeg.
 
 ## Features
-
 - EZ Mode (fast paste → sanitize radio links → one-click download)
 - Advanced Mode (quality selection, multiple queued items)
 - URL normalization (radio/playlist → single watch URL when desired)
